@@ -1,0 +1,12 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "voxoy-dev",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev", "--", "--port", "4324"],
+      "port": 4324,
+      "cwd": "/Users/robertopradogonzalez/Desktop/sopadeletras®/CLIENTES/VOXOY/WEB/voxoy-proto-dash"
+    }
+  ]
+}

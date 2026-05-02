@@ -1,12 +1,12 @@
 import type { APIRoute } from 'astro';
+import { env } from 'cloudflare:workers';
 import { analizarRecibo, analisisMock } from '../../lib/claude';
 
 export const prerender = false;
 
-export const POST: APIRoute = async ({ request, locals }) => {
+export const POST: APIRoute = async ({ request }) => {
   try {
-    const env = (locals as any).runtime?.env || (globalThis as any).process?.env || {};
-    const apiKey = env.ANTHROPIC_API_KEY;
+    const apiKey = (env as any).ANTHROPIC_API_KEY;
 
     const formData = await request.formData();
     const file = formData.get('file') as File | null;
