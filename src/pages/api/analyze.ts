@@ -46,6 +46,30 @@ export const POST: APIRoute = async ({ request }) => {
 
     const result = await analizarRecibo(base64, file.name, apiKey);
 
+    // Persist to D1 for cross-browser admin visibility
+    try {
+      const db = (env as any).DB;
+      if (db) {
+        await db
+          .prepare(
+            'INSERT OR REPLACE INTO analyses (id, timestamp, filename, nivel, score, tienda, producto, data) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+          )
+          .bind(
+            result.id,
+            result.timestamp,
+            file.name,
+            result.nivel,
+            result.score_confianza,
+            result.extraido?.tienda ?? '',
+            result.extraido?.producto ?? '',
+            JSON.stringify(result),
+          )
+          .run();
+      }
+    } catch (dbErr) {
+      console.warn('D1 save failed (non-fatal)', dbErr);
+    }
+
     return new Response(JSON.stringify(result), {
       status: 200,
       headers: { 'Content-Type': 'application/json' },

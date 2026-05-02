@@ -10,6 +10,13 @@
 	"observability": {
 		"enabled": true
 	},
+	"d1_databases": [
+		{
+			"binding": "DB",
+			"database_name": "voxoy-analyses",
+			"database_id": "9638b072-55ac-41cd-9536-f22f67fe7b2f"
+		}
+	],
 	"routes": [
 		{
 			"pattern": "voxoy.sopadeletras.art",

@@ -3,18 +3,42 @@ import type { AnalisisCompleto, NivelConfianza } from '../lib/types';
 import { colorDeNivel } from '../lib/types';
 import { formatMXN, formatUSD, getTier } from '../lib/tabulador';
 
-const STORAGE_KEY = 'voxoy_history_v1';
-
 type Filter = 'todos' | 'flagueados' | 'confiables';
 
 export default function AdminApp() {
   const [history, setHistory] = useState<AnalisisCompleto[]>([]);
   const [filter, setFilter] = useState<Filter>('todos');
   const [selected, setSelected] = useState<AnalisisCompleto | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [clearing, setClearing] = useState(false);
+
+  async function fetchHistory() {
+    setLoading(true);
+    try {
+      const res = await fetch('/api/history');
+      const data = await res.json();
+      if (Array.isArray(data)) setHistory(data);
+    } catch (e) {
+      console.error('Error cargando historial', e);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function clearHistory() {
+    if (!confirm('¿Borrar todo el historial? Esta acción no se puede deshacer.')) return;
+    setClearing(true);
+    try {
+      await fetch('/api/history', { method: 'DELETE' });
+      setHistory([]);
+      setSelected(null);
+    } finally {
+      setClearing(false);
+    }
+  }
 
   useEffect(() => {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) setHistory(JSON.parse(raw));
+    fetchHistory();
   }, []);
 
   const filtered = history.filter((item) => {
@@ -31,6 +55,15 @@ export default function AdminApp() {
     valor_total: history.reduce((s, i) => s + i.calculo.fee_mxn, 0),
   };
 
+  if (loading) {
+    return (
+      <div className="mx-auto max-w-6xl px-4 py-16 sm:px-6 text-center">
+        <div className="mx-auto mb-4 h-10 w-10 animate-spin rounded-full border-4 border-neutral-200 border-t-voxoy-red"></div>
+        <p className="text-neutral-500">Cargando recibos...</p>
+      </div>
+    );
+  }
+
   if (history.length === 0) {
     return (
       <div className="mx-auto max-w-6xl px-4 py-16 sm:px-6 text-center">
@@ -38,21 +71,54 @@ export default function AdminApp() {
         <p className="text-neutral-600 mb-8">
           Aún no hay recibos procesados. Sube uno desde la vista cliente para empezar.
         </p>
-        <a
-          href="/"
-          className="inline-block rounded-full bg-voxoy-red px-6 py-3 font-semibold text-white shadow-sm transition hover:bg-voxoy-red-dark"
-        >
-          Ir a vista cliente
-        </a>
+        <div className="flex gap-3 justify-center">
+          <a
+            href="/"
+            className="inline-block rounded-full bg-voxoy-red px-6 py-3 font-semibold text-white shadow-sm transition hover:bg-voxoy-red-dark"
+          >
+            Ir a vista cliente
+          </a>
+          <button
+            onClick={fetchHistory}
+            className="inline-block rounded-full border border-neutral-300 px-6 py-3 font-semibold text-neutral-700 transition hover:border-neutral-400"
+          >
+            Recargar
+          </button>
+        </div>
       </div>
     );
   }
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6">
-      <div className="mb-8">
-        <h1 className="text-3xl font-extrabold text-voxoy-black mb-1">Panel de control</h1>
-        <p className="text-neutral-600">Recibos procesados y nivel de confianza por la AI.</p>
+      <div className="mb-8 flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-extrabold text-voxoy-black mb-1">Panel de control</h1>
+          <p className="text-neutral-600">Recibos procesados y nivel de confianza por la AI.</p>
+        </div>
+        <div className="flex gap-2 shrink-0 mt-1">
+          <button
+            onClick={fetchHistory}
+            className="flex items-center gap-1.5 rounded-full border border-neutral-300 px-4 py-2 text-sm font-medium text-neutral-700 transition hover:border-neutral-400"
+            title="Recargar recibos"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.8" stroke="currentColor" className="h-4 w-4">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99" />
+            </svg>
+            Recargar
+          </button>
+          <button
+            onClick={clearHistory}
+            disabled={clearing}
+            className="flex items-center gap-1.5 rounded-full border border-red-200 px-4 py-2 text-sm font-medium text-red-600 transition hover:bg-red-50 disabled:opacity-50"
+            title="Limpiar historial"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.8" stroke="currentColor" className="h-4 w-4">
+              <path strokeLinecap="round" strokeLinejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0" />
+            </svg>
+            {clearing ? 'Borrando...' : 'Limpiar todo'}
+          </button>
+        </div>
       </div>
 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-8">
