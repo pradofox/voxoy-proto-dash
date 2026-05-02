@@ -1,0 +1,12 @@
+---
+import Base from '../layouts/Base.astro';
+import Header from '../components/Header.astro';
+import AdminApp from '../components/AdminApp.tsx';
+---
+
+<Base title="Voxoy - Panel admin" description="Panel interno Voxoy">
+  <Header variant="admin" />
+  <main>
+    <AdminApp client:load />
+  </main>
+</Base>

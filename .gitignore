@@ -1,0 +1,17 @@
+# build outputs
+dist/
+.astro/
+node_modules/
+
+# env
+.env
+.dev.vars
+
+# OS
+.DS_Store
+
+# wrangler state
+.wrangler/
+
+# editor
+.vscode/settings.json

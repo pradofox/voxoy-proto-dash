@@ -1,0 +1,15 @@
+---
+import Base from '../layouts/Base.astro';
+import Header from '../components/Header.astro';
+import CustomerApp from '../components/CustomerApp.tsx';
+---
+
+<Base>
+  <Header variant="cliente" />
+  <main>
+    <CustomerApp client:load />
+  </main>
+  <footer class="border-t border-neutral-100 py-8 text-center text-xs text-neutral-400">
+    <p>Prototipo desarrollado por sopadeletras® para Voxoy.</p>
+  </footer>
+</Base>

@@ -1,0 +1,31 @@
+{
+  "name": "voxoy-proto-dash",
+  "type": "module",
+  "version": "0.0.1",
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "scripts": {
+    "dev": "astro dev",
+    "build": "astro build",
+    "preview": "astro preview",
+    "astro": "astro",
+    "generate-types": "wrangler types"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.92.0",
+    "@astrojs/cloudflare": "^13.3.0",
+    "@astrojs/react": "^5.0.4",
+    "@tailwindcss/vite": "^4.2.4",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "astro": "^6.2.1",
+    "react": "^19.2.5",
+    "react-dom": "^19.2.5",
+    "tailwindcss": "^4.2.4",
+    "wrangler": "^4.87.0"
+  },
+  "overrides": {
+    "vite": "^7"
+  }
+}

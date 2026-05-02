@@ -1,0 +1,33 @@
+---
+import '../styles/global.css';
+
+interface Props {
+  title?: string;
+  description?: string;
+}
+
+const {
+  title = 'Voxoy - Calcula tu envío al instante',
+  description = 'Sube el recibo de tu compra en EE.UU. y descubre cuánto te cuesta traerlo a México con Voxoy.',
+} = Astro.props;
+---
+
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content={description} />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap"
+    />
+    <link rel="icon" href="/voxoy-logo.png" type="image/png" />
+    <title>{title}</title>
+  </head>
+  <body class="bg-white text-voxoy-black antialiased">
+    <slot />
+  </body>
+</html>
