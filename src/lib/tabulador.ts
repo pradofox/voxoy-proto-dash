@@ -12,6 +12,7 @@ export interface TabuladorTier {
   fee: number;
   ejemplos: string[];
   descripcion: string;
+  dimensiones: string;
 }
 
 export const TIERS: TabuladorTier[] = [
@@ -20,42 +21,49 @@ export const TIERS: TabuladorTier[] = [
     fee: 0.17,
     ejemplos: ['cosméticos', 'libros', 'audífonos', 'cargador', 'cables'],
     descripcion: 'Microondas o más pequeño',
+    dimensiones: 'hasta ~35×25×15 cm · máx. 2 kg',
   },
   {
     categoria: 'chico-medio',
     fee: 0.2,
     ejemplos: ['mochila', 'palo de golf', 'lámpara mediana', 'gadget mediano'],
     descripcion: 'Caja de zapatos a microondas',
+    dimensiones: 'hasta ~45×35×25 cm · máx. 5 kg',
   },
   {
     categoria: 'medio',
     fee: 0.22,
     ejemplos: ['laptop', 'monitor 24"', 'maleta carry-on', 'tablet'],
     descripcion: 'Tamaño laptop / mochila grande',
+    dimensiones: 'hasta ~65×50×35 cm · máx. 12 kg',
   },
   {
     categoria: 'medio-grande',
     fee: 0.24,
     ejemplos: ['TV 32"', 'maleta documentada', 'sintetizador'],
     descripcion: 'TV mediana / maleta documentada',
+    dimensiones: 'hasta ~90×60×40 cm · máx. 25 kg',
   },
   {
     categoria: 'grande',
     fee: 0.26,
     ejemplos: ['TV 55"', 'silla de oficina', 'bicicleta'],
     descripcion: 'TV grande / silla',
+    dimensiones: 'hasta ~130×80×50 cm · máx. 40 kg',
   },
   {
     categoria: 'extra-grande',
     fee: 0.28,
     ejemplos: ['sillón individual', 'mesa pequeña', 'librero'],
     descripcion: 'Mueble individual',
+    dimensiones: 'hasta ~160×100×80 cm · máx. 70 kg',
   },
   {
     categoria: 'maximo',
     fee: 0.3,
     ejemplos: ['sillón grande', 'mesa de comedor', 'sofá'],
     descripcion: 'Mueble grande',
+    dimensiones: 'más de 160 cm en alguna dimensión o más de 70 kg',
   },
 ];
 

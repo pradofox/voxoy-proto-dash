@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { AnalisisCompleto, NivelConfianza } from '../lib/types';
 import { colorDeNivel } from '../lib/types';
-import { formatMXN, formatUSD } from '../lib/tabulador';
+import { formatMXN, formatUSD, getTier } from '../lib/tabulador';
 
 const STORAGE_KEY = 'voxoy_history_v1';
 
@@ -206,6 +206,8 @@ function DetailModal({ item, onClose }: { item: AnalisisCompleto; onClose: () =>
         </div>
 
         <div className="p-6 space-y-6">
+
+          {/* ── Comisión ──────────────────────────────────────────── */}
           <div className="rounded-xl bg-neutral-50 p-5">
             <p className="text-xs uppercase tracking-wider text-neutral-500 mb-2">
               Comisión a cobrar al cliente
@@ -218,6 +220,13 @@ function DetailModal({ item, onClose }: { item: AnalisisCompleto; onClose: () =>
             </p>
           </div>
 
+          {/* ── Comparativa de precios ────────────────────────────── */}
+          <PriceComparisonCard extraido={extraido} verificacion={verificacion} />
+
+          {/* ── Categoría + dimensiones ───────────────────────────── */}
+          <TierCard categoria={extraido.categoria_estimada} feePct={calculo.fee_porcentaje} />
+
+          {/* ── Alertas ───────────────────────────────────────────── */}
           {(item.nivel === 'baja' || item.nivel === 'sospechoso') && (
             <div className="rounded-xl bg-red-50 border border-red-200 p-5">
               <p className="text-sm font-semibold text-red-900 mb-2">Acciones recomendadas</p>
@@ -229,31 +238,25 @@ function DetailModal({ item, onClose }: { item: AnalisisCompleto; onClose: () =>
             </div>
           )}
 
+          {/* ── Análisis ──────────────────────────────────────────── */}
           <Section title="Análisis de la AI">
             <p className="text-sm text-neutral-700 leading-relaxed">{item.razon_larga}</p>
           </Section>
 
-          <div className="grid grid-cols-2 gap-4">
-            <DataPoint label="Precio reportado" value={formatUSD(extraido.precio_reportado_usd)} />
-            <DataPoint
-              label="Precio mercado"
-              value={
-                verificacion.precio_mercado_usd_min && verificacion.precio_mercado_usd_max
-                  ? `${formatUSD(verificacion.precio_mercado_usd_min)} - ${formatUSD(verificacion.precio_mercado_usd_max)}`
-                  : 'no disponible'
-              }
-            />
-            <DataPoint label="Categoría" value={extraido.categoria_estimada} />
-            <DataPoint label="Tarifa aplicada" value={`${(calculo.fee_porcentaje * 100).toFixed(0)}%`} />
-            {extraido.numero_orden && <DataPoint label="Número de orden" value={extraido.numero_orden} />}
-            {extraido.fecha && <DataPoint label="Fecha" value={extraido.fecha} />}
-          </div>
+          {/* ── Datos adicionales ─────────────────────────────────── */}
+          {(extraido.numero_orden || extraido.fecha) && (
+            <div className="grid grid-cols-2 gap-4">
+              {extraido.numero_orden && <DataPoint label="Número de orden" value={extraido.numero_orden} />}
+              {extraido.fecha && <DataPoint label="Fecha del recibo" value={extraido.fecha} />}
+            </div>
+          )}
 
+          {/* ── Fuentes ───────────────────────────────────────────── */}
           {verificacion.fuentes_consultadas?.length > 0 && (
             <Section title="Fuentes consultadas">
               <ul className="text-sm text-neutral-600 list-disc list-inside">
                 {verificacion.fuentes_consultadas.map((f) => (
-                  <li>{f}</li>
+                  <li key={f}>{f}</li>
                 ))}
               </ul>
               {verificacion.notas && (
@@ -262,6 +265,113 @@ function DetailModal({ item, onClose }: { item: AnalisisCompleto; onClose: () =>
             </Section>
           )}
         </div>
+      </div>
+    </div>
+  );
+}
+
+function PriceComparisonCard({
+  extraido,
+  verificacion,
+}: {
+  extraido: AnalisisCompleto['extraido'];
+  verificacion: AnalisisCompleto['verificacion'];
+}) {
+  const tieneRango =
+    verificacion.precio_mercado_usd_min != null && verificacion.precio_mercado_usd_max != null;
+
+  const precioMedio = tieneRango
+    ? (verificacion.precio_mercado_usd_min! + verificacion.precio_mercado_usd_max!) / 2
+    : null;
+
+  const diferenciaPct =
+    precioMedio && precioMedio > 0
+      ? ((precioMedio - extraido.precio_reportado_usd) / precioMedio) * 100
+      : null;
+
+  const isOk = diferenciaPct === null || Math.abs(diferenciaPct) <= 10;
+  const isAmber = !isOk && Math.abs(diferenciaPct!) <= 35;
+  const isRed = !isOk && !isAmber;
+
+  const badgeBg = isOk ? 'bg-emerald-50' : isAmber ? 'bg-amber-50' : 'bg-red-50';
+  const badgeText = isOk ? 'text-emerald-800' : isAmber ? 'text-amber-800' : 'text-red-800';
+  const emoji = isOk ? '✅' : isAmber ? '⚠️' : '🚨';
+  const label = isOk
+    ? 'Precio coincide con el mercado'
+    : `${diferenciaPct!.toFixed(0)}% por debajo del precio de mercado`;
+
+  return (
+    <div>
+      <p className="text-xs font-semibold uppercase tracking-wider text-neutral-500 mb-3">
+        Comparativa de precio
+      </p>
+      <div className="grid grid-cols-2 gap-3 mb-3">
+        <div className="rounded-lg border border-neutral-200 bg-white p-4">
+          <p className="text-xs uppercase tracking-wider text-neutral-400 mb-1">
+            Reportado por el cliente
+          </p>
+          <p className="text-2xl font-extrabold text-voxoy-black">
+            {formatUSD(extraido.precio_reportado_usd)}
+          </p>
+        </div>
+        <div className="rounded-lg border border-neutral-200 bg-white p-4">
+          <p className="text-xs uppercase tracking-wider text-neutral-400 mb-1">
+            Precio en el mercado
+          </p>
+          {tieneRango ? (
+            <>
+              <p className="text-2xl font-extrabold text-voxoy-black">
+                {formatUSD(verificacion.precio_mercado_usd_min!)}
+              </p>
+              {verificacion.precio_mercado_usd_min !== verificacion.precio_mercado_usd_max && (
+                <p className="text-sm text-neutral-500">
+                  - {formatUSD(verificacion.precio_mercado_usd_max!)}
+                </p>
+              )}
+            </>
+          ) : (
+            <p className="text-sm text-neutral-400 italic mt-1">no disponible</p>
+          )}
+        </div>
+      </div>
+      <div className={`rounded-lg px-4 py-3 text-sm font-medium flex items-center gap-2 ${badgeBg} ${badgeText}`}>
+        <span>{emoji}</span>
+        <span>{label}</span>
+      </div>
+    </div>
+  );
+}
+
+function TierCard({
+  categoria,
+  feePct,
+}: {
+  categoria: string;
+  feePct: number;
+}) {
+  const tier = getTier(categoria as any);
+  return (
+    <div className="rounded-xl border border-neutral-200 bg-white p-4">
+      <p className="text-xs font-semibold uppercase tracking-wider text-neutral-500 mb-3">
+        Categoría de tamaño · justificación del {(feePct * 100).toFixed(0)}%
+      </p>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <p className="text-lg font-bold text-voxoy-black capitalize">{tier.categoria}</p>
+          <p className="text-sm text-neutral-600 mt-0.5">{tier.descripcion}</p>
+          <p className="text-sm text-neutral-500 mt-1">📐 {tier.dimensiones}</p>
+        </div>
+        <div className="text-right shrink-0">
+          <p className="text-2xl font-extrabold text-voxoy-black">{(feePct * 100).toFixed(0)}%</p>
+          <p className="text-xs text-neutral-500">tarifa</p>
+        </div>
+      </div>
+      <div className="mt-3 flex flex-wrap gap-1.5">
+        {tier.ejemplos.map((e) => (
+          <span key={e} className="rounded-full bg-neutral-100 px-2.5 py-0.5 text-xs text-neutral-600">
+            {e}
+          </span>
+        ))}
       </div>
     </div>
   );
