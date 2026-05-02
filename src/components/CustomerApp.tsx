@@ -317,15 +317,15 @@ function ResultView({ data, onReset }: { data: AnalisisCompleto; onReset: () => 
 
         <div className="rounded-xl bg-voxoy-red p-6 text-white">
           <p className="text-xs uppercase tracking-wider opacity-80 mb-1">
-            {isAltoValor ? 'Costo estimado del producto' : 'Total a pagar al recoger'}
+            {isAltoValor ? 'Costo estimado del producto' : 'Lo que pagas al recoger'}
           </p>
           <p className="text-4xl font-extrabold">
-            {isAltoValor ? formatMXN(calculo.precio_mxn) : formatMXN(calculo.total_mxn)}
+            {isAltoValor ? formatMXN(calculo.precio_mxn) : formatMXN(calculo.fee_mxn)}
           </p>
           <p className="text-sm opacity-80 mt-1">
             {isAltoValor
               ? 'Comisión a negociar con Voxoy'
-              : `${formatMXN(calculo.precio_mxn)} producto + ${formatMXN(calculo.fee_mxn)} comisión`}
+              : 'Solo la comisión. El producto ya lo pagaste en EE.UU.'}
           </p>
         </div>
       </div>
@@ -386,7 +386,7 @@ function HistoryPanel({
             <p className="text-xs text-neutral-500 truncate">{item.extraido.tienda}</p>
             <p className="text-sm font-medium text-voxoy-black truncate">{item.extraido.producto}</p>
             <p className="text-sm text-voxoy-red font-semibold mt-1">
-              {formatMXN(item.calculo.total_mxn)}
+              {formatMXN(item.calculo.fee_mxn)}
             </p>
           </button>
         ))}
