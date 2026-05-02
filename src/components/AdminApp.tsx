@@ -206,6 +206,29 @@ function DetailModal({ item, onClose }: { item: AnalisisCompleto; onClose: () =>
         </div>
 
         <div className="p-6 space-y-6">
+          <div className="rounded-xl bg-neutral-50 p-5">
+            <p className="text-xs uppercase tracking-wider text-neutral-500 mb-2">
+              Comisión a cobrar al cliente
+            </p>
+            <p className="text-3xl font-extrabold text-voxoy-black">
+              {formatMXN(calculo.fee_mxn)}
+            </p>
+            <p className="text-sm text-neutral-600 mt-1">
+              {(calculo.fee_porcentaje * 100).toFixed(0)}% sobre {formatMXN(calculo.precio_mxn)} · producto ya pagado en EE.UU.
+            </p>
+          </div>
+
+          {(item.nivel === 'baja' || item.nivel === 'sospechoso') && (
+            <div className="rounded-xl bg-red-50 border border-red-200 p-5">
+              <p className="text-sm font-semibold text-red-900 mb-2">Acciones recomendadas</p>
+              <ul className="text-sm text-red-800 space-y-1 list-disc list-inside">
+                <li>Verificar producto físicamente al recibir</li>
+                <li>Solicitar al cliente comprobante adicional (correo de confirmación de la tienda)</li>
+                <li>No entregar hasta confirmar autenticidad</li>
+              </ul>
+            </div>
+          )}
+
           <Section title="Análisis de la AI">
             <p className="text-sm text-neutral-700 leading-relaxed">{item.razon_larga}</p>
           </Section>
@@ -237,29 +260,6 @@ function DetailModal({ item, onClose }: { item: AnalisisCompleto; onClose: () =>
                 <p className="text-xs text-neutral-500 mt-2 italic">{verificacion.notas}</p>
               )}
             </Section>
-          )}
-
-          <div className="rounded-xl bg-neutral-50 p-5">
-            <p className="text-xs uppercase tracking-wider text-neutral-500 mb-2">
-              Comisión a cobrar al cliente
-            </p>
-            <p className="text-3xl font-extrabold text-voxoy-black">
-              {formatMXN(calculo.fee_mxn)}
-            </p>
-            <p className="text-sm text-neutral-600 mt-1">
-              {(calculo.fee_porcentaje * 100).toFixed(0)}% sobre {formatMXN(calculo.precio_mxn)} · producto ya pagado en EE.UU.
-            </p>
-          </div>
-
-          {(item.nivel === 'baja' || item.nivel === 'sospechoso') && (
-            <div className="rounded-xl bg-red-50 border border-red-200 p-5">
-              <p className="text-sm font-semibold text-red-900 mb-2">Acciones recomendadas</p>
-              <ul className="text-sm text-red-800 space-y-1 list-disc list-inside">
-                <li>Verificar producto físicamente al recibir</li>
-                <li>Solicitar al cliente comprobante adicional (correo de confirmación de la tienda)</li>
-                <li>No entregar hasta confirmar autenticidad</li>
-              </ul>
-            </div>
           )}
         </div>
       </div>
