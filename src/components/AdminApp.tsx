@@ -28,7 +28,7 @@ export default function AdminApp() {
     total: history.length,
     flagueados: history.filter((i) => i.nivel === 'baja' || i.nivel === 'sospechoso').length,
     confiables: history.filter((i) => i.nivel === 'alta').length,
-    valor_total: history.reduce((s, i) => s + i.calculo.total_mxn, 0),
+    valor_total: history.reduce((s, i) => s + i.calculo.fee_mxn, 0),
   };
 
   if (history.length === 0) {
@@ -59,7 +59,7 @@ export default function AdminApp() {
         <StatCard label="Total" value={stats.total.toString()} />
         <StatCard label="Confiables" value={stats.confiables.toString()} accent="emerald" />
         <StatCard label="Flagueados" value={stats.flagueados.toString()} accent="red" />
-        <StatCard label="Volumen" value={formatMXN(stats.valor_total)} />
+        <StatCard label="Comisiones" value={formatMXN(stats.valor_total)} />
       </div>
 
       <div className="mb-4 flex flex-wrap gap-2">
@@ -167,7 +167,7 @@ function ReciboRow({
           <p className="font-bold text-voxoy-black mt-1">
             {formatUSD(item.extraido.precio_reportado_usd)}
           </p>
-          <p className="text-xs text-neutral-600">→ {formatMXN(item.calculo.total_mxn)}</p>
+          <p className="text-xs text-neutral-600">comisión {formatMXN(item.calculo.fee_mxn)}</p>
         </div>
       </div>
     </button>
@@ -241,13 +241,13 @@ function DetailModal({ item, onClose }: { item: AnalisisCompleto; onClose: () =>
 
           <div className="rounded-xl bg-neutral-50 p-5">
             <p className="text-xs uppercase tracking-wider text-neutral-500 mb-2">
-              Total cobrar al cliente
+              Comisión a cobrar al cliente
             </p>
             <p className="text-3xl font-extrabold text-voxoy-black">
-              {formatMXN(calculo.total_mxn)}
+              {formatMXN(calculo.fee_mxn)}
             </p>
             <p className="text-sm text-neutral-600 mt-1">
-              {formatMXN(calculo.precio_mxn)} producto + {formatMXN(calculo.fee_mxn)} comisión
+              {(calculo.fee_porcentaje * 100).toFixed(0)}% sobre {formatMXN(calculo.precio_mxn)} · producto ya pagado en EE.UU.
             </p>
           </div>
 
