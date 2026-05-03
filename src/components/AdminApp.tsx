@@ -1,7 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { AnalisisCompleto, EstadoPedido, NivelConfianza } from '../lib/types';
 import { colorDeNivel } from '../lib/types';
-import { formatMXN, formatUSD, getTier } from '../lib/tabulador';
+import { formatMXN, formatUSD, getTier, TIPO_CAMBIO_USD_MXN } from '../lib/tabulador';
+import type { Categoria } from '../lib/tabulador';
+import { QuoteCalculator } from './QuoteCalculator';
+import type { QuoteSavePayload } from './QuoteCalculator';
 
 type Filter = 'todos' | 'flagueados' | 'confiables' | 'pendientes' | 'en_pobox';
 
@@ -41,14 +44,30 @@ function calcFraudeDetectado(history: AnalisisCompleto[]): number {
 
 // ── Main component ─────────────────────────────────────────────────────────
 
+interface ManualForm {
+  open: boolean;
+  tienda: string;
+  producto: string;
+  numero_orden: string;
+  prefill?: QuoteSavePayload;
+  saving: boolean;
+}
+
 export default function AdminApp() {
   const [history, setHistory] = useState<AnalisisCompleto[]>([]);
+  const [trash, setTrash] = useState<AnalisisCompleto[]>([]);
   const [filter, setFilter] = useState<Filter>('todos');
   const [selected, setSelected] = useState<AnalisisCompleto | null>(null);
   const [loading, setLoading] = useState(true);
   const [clearing, setClearing] = useState(false);
   const [search, setSearch] = useState('');
-  const [tab, setTab] = useState<'pedidos' | 'metricas'>('pedidos');
+  const [tab, setTab] = useState<'pedidos' | 'calculadora' | 'metricas' | 'papelera'>('pedidos');
+  const [tipoCambio, setTipoCambio] = useState<number>(() => {
+    try { return parseFloat(localStorage.getItem('voxoy_tipo_cambio') || '') || TIPO_CAMBIO_USD_MXN; } catch { return TIPO_CAMBIO_USD_MXN; }
+  });
+  const [editRate, setEditRate] = useState(false);
+  const [rateInput, setRateInput] = useState('');
+  const [manualForm, setManualForm] = useState<ManualForm>({ open: false, tienda: '', producto: '', numero_orden: '', saving: false });
 
   async function fetchHistory() {
     setLoading(true);
@@ -63,8 +82,16 @@ export default function AdminApp() {
     }
   }
 
-  async function clearHistory() {
-    if (!confirm('¿Borrar todo el historial? Esta acción no se puede deshacer.')) return;
+  async function fetchTrash() {
+    try {
+      const res = await fetch('/api/history?trash=1');
+      const data = await res.json();
+      if (Array.isArray(data)) setTrash(data);
+    } catch {}
+  }
+
+  async function moveToTrash() {
+    if (!confirm('¿Mover todos los pedidos a la papelera? Podrás recuperarlos.')) return;
     setClearing(true);
     try {
       await fetch('/api/history', { method: 'DELETE' });
@@ -73,6 +100,80 @@ export default function AdminApp() {
     } finally {
       setClearing(false);
     }
+  }
+
+  async function trashItem(id: string) {
+    await fetch('/api/history', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id, trash: true }),
+    });
+    setHistory((prev) => prev.filter((i) => i.id !== id));
+    if (selected?.id === id) setSelected(null);
+  }
+
+  async function restoreItem(id: string) {
+    await fetch('/api/history', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id, restore: true }),
+    });
+    setTrash((prev) => prev.filter((i) => i.id !== id));
+    fetchHistory(); // refresh main list
+  }
+
+  async function purgeItem(id: string) {
+    if (!confirm('¿Eliminar permanentemente? No se puede deshacer.')) return;
+    await fetch('/api/history', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id, purge: true }),
+    });
+    setTrash((prev) => prev.filter((i) => i.id !== id));
+  }
+
+  async function purgeAll() {
+    if (!confirm('¿Vaciar papelera? Esto eliminará permanentemente todos los pedidos borrados.')) return;
+    await fetch('/api/history', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ purge: true }),
+    });
+    setTrash([]);
+  }
+
+  async function saveManualPedido() {
+    if (!manualForm.prefill || !manualForm.tienda || !manualForm.producto) return;
+    setManualForm((f) => ({ ...f, saving: true }));
+    try {
+      const res = await fetch('/api/manual', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tienda: manualForm.tienda,
+          producto: manualForm.producto,
+          precio_usd: manualForm.prefill.precio_usd,
+          categoria: manualForm.prefill.categoria,
+          numero_orden: manualForm.numero_orden || undefined,
+          tipoCambio,
+        }),
+      });
+      const newItem = await res.json();
+      setHistory((prev) => [newItem, ...prev]);
+      setManualForm({ open: false, tienda: '', producto: '', numero_orden: '', saving: false });
+      setTab('pedidos');
+    } catch {
+      setManualForm((f) => ({ ...f, saving: false }));
+    }
+  }
+
+  function saveRate(val: string) {
+    const n = parseFloat(val);
+    if (n > 0) {
+      setTipoCambio(n);
+      try { localStorage.setItem('voxoy_tipo_cambio', n.toString()); } catch {}
+    }
+    setEditRate(false);
   }
 
   function handleStatusChange(id: string, status: EstadoPedido) {
@@ -91,6 +192,7 @@ export default function AdminApp() {
 
   useEffect(() => {
     fetchHistory();
+    fetchTrash();
   }, []);
 
   const q = search.toLowerCase().trim();
@@ -165,29 +267,35 @@ export default function AdminApp() {
     <div className="mx-auto max-w-6xl px-4 py-8 sm:py-10 sm:px-6">
 
       {/* Header */}
-      <div className="mb-5 flex items-center justify-between gap-3">
-        <div className="flex items-center gap-4">
-          <h1 className="text-2xl sm:text-3xl font-extrabold text-voxoy-black">
-            Panel de control
-          </h1>
-          {/* Tabs */}
-          <div className="hidden sm:flex items-center gap-1 rounded-xl border border-neutral-200 bg-neutral-50 p-1">
-            <button
-              onClick={() => setTab('pedidos')}
-              className={`rounded-lg px-4 py-1.5 text-sm font-medium transition ${tab === 'pedidos' ? 'bg-white shadow-sm text-voxoy-black' : 'text-neutral-500 hover:text-neutral-700'}`}
-            >
-              Pedidos
-            </button>
-            <button
-              onClick={() => setTab('metricas')}
-              className={`rounded-lg px-4 py-1.5 text-sm font-medium transition ${tab === 'metricas' ? 'bg-white shadow-sm text-voxoy-black' : 'text-neutral-500 hover:text-neutral-700'}`}
-            >
-              Métricas
-            </button>
+      <div className="mb-5 flex items-center justify-between gap-3 flex-wrap">
+        <div className="flex items-center gap-3 flex-wrap">
+          <h1 className="text-2xl sm:text-3xl font-extrabold text-voxoy-black">Panel de control</h1>
+          {/* Exchange rate widget */}
+          <div className="flex items-center gap-1.5 rounded-full border border-neutral-200 bg-neutral-50 px-3 py-1.5 text-xs text-neutral-500">
+            {editRate ? (
+              <>
+                <span>$</span>
+                <input
+                  type="number"
+                  step="0.01"
+                  defaultValue={tipoCambio}
+                  autoFocus
+                  onBlur={(e) => saveRate(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') saveRate((e.target as HTMLInputElement).value); if (e.key === 'Escape') setEditRate(false); }}
+                  className="w-16 bg-transparent focus:outline-none text-xs font-semibold text-neutral-700"
+                />
+                <span>MXN/USD</span>
+              </>
+            ) : (
+              <button onClick={() => { setRateInput(tipoCambio.toString()); setEditRate(true); }} className="flex items-center gap-1 hover:text-neutral-700 transition">
+                <span className="font-semibold text-neutral-700">${tipoCambio.toFixed(2)}</span>
+                <span>MXN/USD ✏️</span>
+              </button>
+            )}
           </div>
         </div>
         <div className="flex gap-2 shrink-0">
-          <button onClick={fetchHistory} className="flex items-center gap-1.5 rounded-full border border-neutral-300 px-3 py-2 text-sm font-medium text-neutral-700 transition hover:border-neutral-400" title="Recargar">
+          <button onClick={() => { fetchHistory(); fetchTrash(); }} className="flex items-center gap-1.5 rounded-full border border-neutral-300 px-3 py-2 text-sm font-medium text-neutral-700 transition hover:border-neutral-400" title="Recargar">
             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.8" stroke="currentColor" className="h-4 w-4"><path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99" /></svg>
             <span className="hidden sm:inline">Recargar</span>
           </button>
@@ -195,17 +303,29 @@ export default function AdminApp() {
             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.8" stroke="currentColor" className="h-4 w-4"><path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3" /></svg>
             <span className="hidden sm:inline">CSV</span>
           </button>
-          <button onClick={clearHistory} disabled={clearing} className="flex items-center gap-1.5 rounded-full border border-red-200 px-3 py-2 text-sm font-medium text-red-600 transition hover:bg-red-50 disabled:opacity-50" title="Limpiar todo">
+          <button onClick={moveToTrash} disabled={clearing || history.length === 0} className="flex items-center gap-1.5 rounded-full border border-neutral-300 px-3 py-2 text-sm font-medium text-neutral-600 transition hover:border-neutral-400 disabled:opacity-40" title="Mover todo a papelera">
             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.8" stroke="currentColor" className="h-4 w-4"><path strokeLinecap="round" strokeLinejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0" /></svg>
-            <span className="hidden sm:inline">{clearing ? 'Borrando...' : 'Limpiar'}</span>
+            <span className="hidden sm:inline">{clearing ? 'Moviendo...' : 'Limpiar'}</span>
           </button>
         </div>
       </div>
 
-      {/* Mobile tabs */}
-      <div className="flex sm:hidden gap-1 rounded-xl border border-neutral-200 bg-neutral-50 p-1 mb-5">
-        <button onClick={() => setTab('pedidos')} className={`flex-1 rounded-lg py-2 text-sm font-medium transition ${tab === 'pedidos' ? 'bg-white shadow-sm text-voxoy-black' : 'text-neutral-500'}`}>Pedidos</button>
-        <button onClick={() => setTab('metricas')} className={`flex-1 rounded-lg py-2 text-sm font-medium transition ${tab === 'metricas' ? 'bg-white shadow-sm text-voxoy-black' : 'text-neutral-500'}`}>Métricas</button>
+      {/* Tabs */}
+      <div className="flex gap-1 rounded-xl border border-neutral-200 bg-neutral-50 p-1 mb-5 overflow-x-auto">
+        {([
+          { id: 'pedidos', label: 'Pedidos' },
+          { id: 'calculadora', label: '⚡ Calculadora' },
+          { id: 'metricas', label: '📊 Métricas' },
+          { id: 'papelera', label: `🗑️ Papelera${trash.length > 0 ? ` (${trash.length})` : ''}` },
+        ] as const).map((t) => (
+          <button
+            key={t.id}
+            onClick={() => { setTab(t.id); if (t.id === 'papelera') fetchTrash(); }}
+            className={`shrink-0 rounded-lg px-4 py-2 text-sm font-medium transition ${tab === t.id ? 'bg-white shadow-sm text-voxoy-black' : 'text-neutral-500 hover:text-neutral-700'}`}
+          >
+            {t.label}
+          </button>
+        ))}
       </div>
 
       {/* ── TAB: PEDIDOS ─────────────────────────────────────────────────────── */}
@@ -249,7 +369,7 @@ export default function AdminApp() {
           {/* List */}
           <div className="space-y-2">
             {filtered.map((item) => (
-              <ReciboRow key={item.id} item={item} onClick={() => setSelected(item)} />
+              <ReciboRow key={item.id} item={item} onClick={() => setSelected(item)} onTrash={trashItem} />
             ))}
             {filtered.length === 0 && (
               <p className="text-center py-10 text-neutral-500 text-sm">No hay recibos en este filtro.</p>
@@ -281,8 +401,83 @@ export default function AdminApp() {
         </>
       )}
 
+      {/* ── TAB: CALCULADORA ─────────────────────────────────────────────── */}
+      {tab === 'calculadora' && (
+        <div>
+          <QuoteCalculator
+            tipoCambio={tipoCambio}
+            onSaveAsManual={(payload) => setManualForm({ open: true, tienda: '', producto: '', numero_orden: '', prefill: payload, saving: false })}
+          />
+          {/* Manual pedido form */}
+          {manualForm.open && manualForm.prefill && (
+            <div className="mt-5 rounded-2xl border border-neutral-200 bg-white p-6 space-y-4">
+              <p className="text-sm font-semibold text-voxoy-black">Guardar como pedido manual</p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-medium text-neutral-500 block mb-1">Tienda *</label>
+                  <input value={manualForm.tienda} onChange={(e) => setManualForm((f) => ({ ...f, tienda: e.target.value }))} placeholder="Amazon, Walmart, etc." className="w-full rounded-xl border border-neutral-200 px-3 py-2.5 text-sm focus:border-voxoy-red focus:outline-none" />
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-neutral-500 block mb-1">Producto *</label>
+                  <input value={manualForm.producto} onChange={(e) => setManualForm((f) => ({ ...f, producto: e.target.value }))} placeholder="Descripción del producto" className="w-full rounded-xl border border-neutral-200 px-3 py-2.5 text-sm focus:border-voxoy-red focus:outline-none" />
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-neutral-500 block mb-1">Número de orden (opcional)</label>
+                  <input value={manualForm.numero_orden} onChange={(e) => setManualForm((f) => ({ ...f, numero_orden: e.target.value }))} placeholder="W123456789" className="w-full rounded-xl border border-neutral-200 px-3 py-2.5 text-sm focus:border-voxoy-red focus:outline-none" />
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <button onClick={saveManualPedido} disabled={manualForm.saving || !manualForm.tienda || !manualForm.producto} className="flex-1 rounded-xl bg-voxoy-red py-2.5 text-sm font-semibold text-white transition hover:bg-voxoy-red-dark disabled:opacity-40">
+                  {manualForm.saving ? 'Guardando...' : 'Crear pedido'}
+                </button>
+                <button onClick={() => setManualForm((f) => ({ ...f, open: false }))} className="rounded-xl border border-neutral-200 px-5 py-2.5 text-sm text-neutral-600 hover:bg-neutral-50 transition">Cancelar</button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── TAB: PAPELERA ────────────────────────────────────────────────── */}
+      {tab === 'papelera' && (
+        <div>
+          {trash.length === 0 ? (
+            <div className="text-center py-16 text-neutral-500 text-sm">
+              <p className="text-4xl mb-3">🗑️</p>
+              <p>La papelera está vacía</p>
+            </div>
+          ) : (
+            <>
+              <div className="flex items-center justify-between mb-4">
+                <p className="text-sm text-neutral-600">{trash.length} {trash.length === 1 ? 'pedido' : 'pedidos'} en papelera</p>
+                <button onClick={purgeAll} className="text-xs font-medium text-red-600 hover:text-red-700 transition">Vaciar papelera</button>
+              </div>
+              <div className="space-y-2">
+                {trash.map((item) => {
+                  const colors = colorDeNivel(item.nivel);
+                  return (
+                    <div key={item.id} className={`rounded-xl border p-3 sm:p-4 ${colors.border} ${colors.bg} opacity-70`}>
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0 flex-1">
+                          <p className="text-xs text-neutral-500 truncate">{item.extraido.tienda}</p>
+                          <p className="font-semibold text-voxoy-black text-sm truncate">{item.extraido.producto}</p>
+                          <p className="text-xs text-neutral-500 mt-0.5">{new Date(item.timestamp).toLocaleString('es-MX', { dateStyle: 'short', timeStyle: 'short' })}</p>
+                        </div>
+                        <div className="flex gap-2 shrink-0">
+                          <button onClick={() => restoreItem(item.id)} className="rounded-full border border-emerald-300 bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-700 hover:bg-emerald-100 transition">Restaurar</button>
+                          <button onClick={() => purgeItem(item.id)} className="rounded-full border border-red-200 bg-red-50 px-3 py-1 text-xs font-medium text-red-600 hover:bg-red-100 transition">Eliminar</button>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
       {selected && (
-        <DetailModal item={selected} onClose={() => setSelected(null)} onStatusChange={handleStatusChange} onNotesChange={handleNotesChange} />
+        <DetailModal item={selected} onClose={() => setSelected(null)} onStatusChange={handleStatusChange} onNotesChange={handleNotesChange} onTrash={trashItem} />
       )}
     </div>
   );
@@ -465,7 +660,7 @@ const STATUS_CONFIG: Record<EstadoPedido, { label: string; emoji: string; pill: 
 
 // ── ReciboRow ──────────────────────────────────────────────────────────────
 
-function ReciboRow({ item, onClick }: { item: AnalisisCompleto; onClick: () => void }) {
+function ReciboRow({ item, onClick, onTrash }: { item: AnalisisCompleto; onClick: () => void; onTrash: (id: string) => void }) {
   const colors = colorDeNivel(item.nivel);
   const estado = item._status ?? 'pendiente';
   const statusCfg = STATUS_CONFIG[estado];
@@ -500,14 +695,21 @@ function ReciboRow({ item, onClick }: { item: AnalisisCompleto; onClick: () => v
           <p className="font-semibold text-voxoy-black text-sm truncate">{item.extraido.producto}</p>
           <p className={`text-xs mt-0.5 ${colors.text} line-clamp-1`}>{item.razon_corta}</p>
         </div>
-        <div className="text-right shrink-0">
+        <div className="text-right shrink-0 flex flex-col items-end gap-1">
           <p className="text-xs text-neutral-400">{fecha}</p>
-          <p className="font-bold text-voxoy-black text-sm mt-0.5">
+          <p className="font-bold text-voxoy-black text-sm">
             {formatUSD(item.extraido.precio_reportado_usd)}
           </p>
           <p className="text-xs text-neutral-500">
             comisión {formatMXN(item.calculo.fee_mxn)}
           </p>
+          <button
+            onClick={(e) => { e.stopPropagation(); onTrash(item.id); }}
+            className="mt-1 text-neutral-300 hover:text-red-400 transition"
+            title="Mover a papelera"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.8" stroke="currentColor" className="h-3.5 w-3.5"><path strokeLinecap="round" strokeLinejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0" /></svg>
+          </button>
         </div>
       </div>
     </button>
@@ -521,11 +723,13 @@ function DetailModal({
   onClose,
   onStatusChange,
   onNotesChange,
+  onTrash,
 }: {
   item: AnalisisCompleto;
   onClose: () => void;
   onStatusChange: (id: string, status: EstadoPedido) => void;
   onNotesChange: (id: string, notes: string) => void;
+  onTrash: (id: string) => void;
 }) {
   const colors = colorDeNivel(item.nivel);
   const { extraido, verificacion, calculo } = item;
@@ -633,6 +837,26 @@ function DetailModal({
                 </p>
               </div>
             )}
+
+            {/* Contact info */}
+            {(item as any)._contact && (
+              <div className="mt-3 rounded-lg bg-neutral-50 border border-neutral-200 px-4 py-3 flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-xs text-neutral-400 mb-0.5">Contacto del cliente</p>
+                  <p className="text-sm font-semibold text-neutral-800">{(item as any)._contact.nombre}</p>
+                  <p className="text-xs text-neutral-600">{(item as any)._contact.whatsapp}</p>
+                </div>
+                <a
+                  href={`https://wa.me/52${(item as any)._contact.whatsapp.replace(/\D/g,'')}?text=${encodeURIComponent(`¡Hola ${(item as any)._contact.nombre}! 📦 Tu paquete llegó al PO Box Voxoy.\n\n*Producto:* ${item.extraido.producto}\n*Comisión a pagar:* ${formatMXN(item.calculo.fee_mxn)}\n\nPasa a recogerlo L-S 9am-6pm.`)}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="shrink-0 inline-flex items-center gap-1.5 rounded-full bg-[#25D366] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[#1ebe5d] transition"
+                >
+                  <svg viewBox="0 0 24 24" fill="currentColor" className="h-3.5 w-3.5"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413Z"/></svg>
+                  WhatsApp directo
+                </a>
+              </div>
+            )}
           </div>
 
           {/* ── Comisión ──────────────────────────────────────────── */}
@@ -695,6 +919,17 @@ function DetailModal({
 
           {/* ── Notas internas ────────────────────────────────────── */}
           <NotesBox item={item} onSaved={(notes) => onNotesChange(item.id, notes)} />
+
+          {/* ── Mover a papelera ──────────────────────────────────── */}
+          <div className="pt-2 border-t border-neutral-100">
+            <button
+              onClick={() => { onTrash(item.id); onClose(); }}
+              className="text-xs text-neutral-400 hover:text-red-500 transition flex items-center gap-1.5"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.8" stroke="currentColor" className="h-3.5 w-3.5"><path strokeLinecap="round" strokeLinejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0" /></svg>
+              Mover a papelera
+            </button>
+          </div>
 
         </div>
       </div>

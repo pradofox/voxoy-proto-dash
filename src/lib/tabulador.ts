@@ -89,20 +89,21 @@ export interface CalculoResultado {
 export function calcularFee(
   precio_usd: number,
   categoria: Categoria,
+  tipoCambio: number = TIPO_CAMBIO_USD_MXN,
 ): CalculoResultado {
   const tier = getTier(categoria);
-  const precio_mxn = precio_usd * TIPO_CAMBIO_USD_MXN;
+  const precio_mxn = precio_usd * tipoCambio;
   const alto_valor = precio_usd >= ALTO_VALOR_USD;
 
   let fee_porcentaje = tier.fee;
   let fee_aplicado: CalculoResultado['fee_aplicado'] = 'tabulador';
 
   let fee_usd = precio_usd * fee_porcentaje;
-  let fee_mxn = fee_usd * TIPO_CAMBIO_USD_MXN;
+  let fee_mxn = fee_usd * tipoCambio;
 
   if (fee_mxn < FEE_MINIMO_MXN) {
     fee_mxn = FEE_MINIMO_MXN;
-    fee_usd = FEE_MINIMO_MXN / TIPO_CAMBIO_USD_MXN;
+    fee_usd = FEE_MINIMO_MXN / tipoCambio;
     fee_aplicado = 'minimo';
   }
 

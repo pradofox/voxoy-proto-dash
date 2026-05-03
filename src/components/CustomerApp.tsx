@@ -1,10 +1,21 @@
 import { useEffect, useRef, useState } from 'react';
 import type { AnalisisCompleto, EstadoPedido } from '../lib/types';
-import { TIERS, calcularFee, formatMXN, formatUSD, getTier } from '../lib/tabulador';
-import type { Categoria } from '../lib/tabulador';
+import { formatMXN, formatUSD, getTier } from '../lib/tabulador';
+import { QuoteCalculator } from './QuoteCalculator';
+
+const CONTACT_KEY = 'voxoy_contact_v1';
 
 const STORAGE_KEY = 'voxoy_history_v1';
 const MAX_HISTORY = 20;
+
+interface ContactInfo { nombre: string; whatsapp: string }
+
+function readContact(): ContactInfo | null {
+  try { const r = localStorage.getItem(CONTACT_KEY); return r ? JSON.parse(r) : null; } catch { return null; }
+}
+function saveContact(c: ContactInfo) {
+  try { localStorage.setItem(CONTACT_KEY, JSON.stringify(c)); } catch {}
+}
 
 type AppState =
   | { status: 'idle' }
@@ -37,6 +48,8 @@ export default function CustomerApp() {
   const [state, setState] = useState<AppState>({ status: 'idle' });
   const [history, setHistory] = useState<AnalisisCompleto[]>([]);
   const [statusMap, setStatusMap] = useState<Record<string, EstadoPedido>>({});
+  const [contact, setContact] = useState<ContactInfo | null>(null);
+  const [contactPrompted, setContactPrompted] = useState(false); // don't re-ask same session
   const inputRef = useRef<HTMLInputElement>(null);
   const [dragOver, setDragOver] = useState(false);
 
@@ -55,6 +68,7 @@ export default function CustomerApp() {
     const h = readHistory();
     setHistory(h);
     fetchStatuses(h.map((i) => i.id).filter(Boolean));
+    setContact(readContact());
   }, []);
 
   async function processFile(file: File) {
@@ -110,7 +124,21 @@ export default function CustomerApp() {
     fetchStatuses([item.id]);
   }
 
+  async function handleSaveContact(c: ContactInfo, analysisId: string) {
+    saveContact(c);
+    setContact(c);
+    setContactPrompted(true);
+    try {
+      await fetch('/api/history', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: analysisId, contact: c }),
+      });
+    } catch {}
+  }
+
   const currentStatus = state.status === 'result' ? (statusMap[state.data.id] ?? 'pendiente') : undefined;
+  const showContactPrompt = state.status === 'result' && !contact && !contactPrompted;
 
   return (
     <div className="mx-auto max-w-3xl px-4 py-12 sm:px-6 sm:py-16">
@@ -124,14 +152,28 @@ export default function CustomerApp() {
         />
       )}
       {state.status === 'loading' && <LoadingView filename={state.filename} />}
-      {state.status === 'result' && <ResultView data={state.data} onReset={reset} currentStatus={currentStatus} />}
+      {state.status === 'result' && (
+        <ResultView
+          data={state.data}
+          onReset={reset}
+          currentStatus={currentStatus}
+          showContactPrompt={showContactPrompt}
+          onSaveContact={(c) => handleSaveContact(c, state.data.id)}
+          onDismissContact={() => setContactPrompted(true)}
+        />
+      )}
       {state.status === 'error' && <ErrorView message={state.message} onReset={reset} />}
 
       {history.length > 0 && state.status === 'idle' && (
         <HistoryPanel history={history} onClear={clearHistory} onSelect={loadFromHistory} statusMap={statusMap} />
       )}
 
-      {state.status === 'idle' && <OrderStatusLookup />}
+      {state.status === 'idle' && (
+        <OrderStatusLookup
+          contact={contact}
+          onEditContact={(c) => { saveContact(c); setContact(c); }}
+        />
+      )}
     </div>
   );
 }
@@ -269,105 +311,6 @@ function IdleView({
   );
 }
 
-// ── Quote Calculator ───────────────────────────────────────────────────────
-
-function QuoteCalculator() {
-  const [categoria, setCategoria] = useState<Categoria>('medio');
-  const [precioStr, setPrecioStr] = useState('');
-
-  const precio = parseFloat(precioStr) || 0;
-  const result = precio > 0 ? calcularFee(precio, categoria) : null;
-  const tier = TIERS.find((t) => t.categoria === categoria)!;
-
-  return (
-    <div className="rounded-2xl border border-neutral-200 bg-white p-6 sm:p-8 shadow-sm">
-      {/* Category selector */}
-      <div className="mb-6">
-        <label className="text-sm font-semibold text-neutral-700 block mb-3">
-          Tipo de producto
-        </label>
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-          {TIERS.map((t) => (
-            <button
-              key={t.categoria}
-              onClick={() => setCategoria(t.categoria)}
-              className={`rounded-xl border p-3 text-left transition ${
-                categoria === t.categoria
-                  ? 'border-voxoy-red bg-red-50 ring-1 ring-voxoy-red'
-                  : 'border-neutral-200 bg-neutral-50 hover:border-neutral-300'
-              }`}
-            >
-              <p className="text-xs font-bold text-voxoy-black capitalize leading-tight">
-                {t.categoria.replace('-', ' ')}
-              </p>
-              <p className="text-[10px] text-neutral-500 mt-0.5 leading-tight line-clamp-2">
-                {t.descripcion}
-              </p>
-              <p className="text-sm font-extrabold text-voxoy-red mt-1.5">
-                {(t.fee * 100).toFixed(0)}%
-              </p>
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* Price input */}
-      <div className="mb-6">
-        <label className="text-sm font-semibold text-neutral-700 block mb-2">
-          Precio del producto en EE.UU.
-        </label>
-        <div className="relative">
-          <span className="absolute left-4 top-1/2 -translate-y-1/2 text-lg text-neutral-400 font-semibold select-none">$</span>
-          <input
-            type="number"
-            min="0"
-            step="0.01"
-            value={precioStr}
-            onChange={(e) => setPrecioStr(e.target.value)}
-            placeholder="0.00"
-            className="w-full rounded-xl border border-neutral-200 pl-9 pr-20 py-3.5 text-2xl font-bold text-voxoy-black placeholder:text-neutral-300 focus:border-voxoy-red focus:outline-none focus:ring-1 focus:ring-voxoy-red"
-          />
-          <span className="absolute right-4 top-1/2 -translate-y-1/2 text-sm text-neutral-400 font-medium">USD</span>
-        </div>
-      </div>
-
-      {/* Result */}
-      {result ? (
-        <>
-          {result.fee_aplicado === 'preferencial' ? (
-            <div className="rounded-xl bg-amber-50 border border-amber-200 p-5 mb-4">
-              <p className="font-semibold text-amber-900 mb-1">⭐ Producto de alto valor (+$1,500 USD)</p>
-              <p className="text-sm text-amber-800">
-                Este producto califica para tarifa preferencial. Contacta a Voxoy para tu cotización personalizada.
-              </p>
-            </div>
-          ) : (
-            <div className="rounded-xl bg-voxoy-red p-5 text-white mb-4">
-              <p className="text-xs uppercase tracking-wider opacity-80 mb-1">Comisión Voxoy</p>
-              <p className="text-4xl font-extrabold">{formatMXN(result.fee_mxn)}</p>
-              <div className="flex items-center gap-4 mt-2 text-sm opacity-80">
-                <span>{(result.fee_porcentaje * 100).toFixed(0)}% sobre {formatUSD(precio)}</span>
-              </div>
-              {result.fee_aplicado === 'minimo' && (
-                <p className="text-xs opacity-70 mt-1">(tarifa mínima aplicada)</p>
-              )}
-            </div>
-          )}
-          <div className="rounded-lg border border-neutral-200 bg-neutral-50 p-3 text-sm">
-            <span className="text-neutral-500">📐 </span>
-            <span className="text-neutral-700 font-medium">{tier.dimensiones}</span>
-            <span className="text-neutral-400 ml-2">· {tier.descripcion}</span>
-          </div>
-        </>
-      ) : (
-        <div className="rounded-xl border-2 border-dashed border-neutral-200 p-8 text-center text-neutral-400 text-sm">
-          Ingresa el precio para ver la cotización
-        </div>
-      )}
-    </div>
-  );
-}
-
 function FeatureCard({ icon, title, desc }: { icon: string; title: string; desc: string }) {
   return (
     <div className="rounded-xl border border-neutral-200 p-6">
@@ -430,7 +373,21 @@ const RESULT_STATUS_INFO: Record<EstadoPedido, { emoji: string; label: string; d
   },
 };
 
-function ResultView({ data, onReset, currentStatus }: { data: AnalisisCompleto; onReset: () => void; currentStatus?: EstadoPedido }) {
+function ResultView({
+  data,
+  onReset,
+  currentStatus,
+  showContactPrompt,
+  onSaveContact,
+  onDismissContact,
+}: {
+  data: AnalisisCompleto;
+  onReset: () => void;
+  currentStatus?: EstadoPedido;
+  showContactPrompt?: boolean;
+  onSaveContact?: (c: ContactInfo) => void;
+  onDismissContact?: () => void;
+}) {
   const { extraido, calculo } = data;
   const tier = getTier(extraido.categoria_estimada);
   const isAltoValor = calculo.fee_aplicado === 'preferencial';
@@ -530,8 +487,66 @@ function ResultView({ data, onReset, currentStatus }: { data: AnalisisCompleto; 
       </div>
 
       <div className="mt-6 text-center text-sm text-neutral-500">
-        <p>Cuando llegue tu paquete a McAllen te avisamos por correo.</p>
+        <p>Cuando llegue tu paquete a McAllen te avisamos por WhatsApp.</p>
         <p className="mt-1">Pasas a recoger a tu sucursal y pagas en efectivo.</p>
+      </div>
+
+      {/* Contact capture — only shown on first visit */}
+      {showContactPrompt && onSaveContact && onDismissContact && (
+        <ContactCaptureCard onSave={onSaveContact} onDismiss={onDismissContact} />
+      )}
+    </div>
+  );
+}
+
+// ── ContactCaptureCard ─────────────────────────────────────────────────────
+
+function ContactCaptureCard({
+  onSave,
+  onDismiss,
+}: {
+  onSave: (c: ContactInfo) => void;
+  onDismiss: () => void;
+}) {
+  const [nombre, setNombre] = useState('');
+  const [whatsapp, setWhatsapp] = useState('');
+
+  return (
+    <div className="mt-6 rounded-2xl border border-blue-200 bg-blue-50 p-5">
+      <p className="text-sm font-semibold text-blue-900 mb-0.5">📲 ¿Te avisamos cuando llegue?</p>
+      <p className="text-xs text-blue-700 mb-4">
+        Guardamos tu contacto una vez y te notificamos por WhatsApp cuando tu paquete llegue a McAllen.
+      </p>
+      <div className="space-y-2 mb-4">
+        <input
+          type="text"
+          value={nombre}
+          onChange={(e) => setNombre(e.target.value)}
+          placeholder="Tu nombre"
+          className="w-full rounded-xl border border-blue-200 bg-white px-4 py-2.5 text-sm text-neutral-800 placeholder:text-neutral-400 focus:border-blue-400 focus:outline-none"
+        />
+        <input
+          type="tel"
+          value={whatsapp}
+          onChange={(e) => setWhatsapp(e.target.value)}
+          placeholder="WhatsApp (ej. 8181234567)"
+          className="w-full rounded-xl border border-blue-200 bg-white px-4 py-2.5 text-sm text-neutral-800 placeholder:text-neutral-400 focus:border-blue-400 focus:outline-none"
+        />
+      </div>
+      <div className="flex gap-2">
+        <button
+          onClick={() => nombre.trim() && whatsapp.trim() && onSave({ nombre: nombre.trim(), whatsapp: whatsapp.trim() })}
+          disabled={!nombre.trim() || !whatsapp.trim()}
+          className="flex-1 rounded-xl bg-blue-600 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:opacity-40"
+        >
+          Guardar contacto
+        </button>
+        <button
+          onClick={onDismiss}
+          className="rounded-xl border border-blue-200 px-4 py-2.5 text-sm text-blue-600 transition hover:bg-blue-100"
+        >
+          Ahora no
+        </button>
       </div>
     </div>
   );
@@ -586,10 +601,19 @@ const STATUS_INFO = {
   },
 };
 
-function OrderStatusLookup() {
+function OrderStatusLookup({
+  contact,
+  onEditContact,
+}: {
+  contact: ContactInfo | null;
+  onEditContact: (c: ContactInfo) => void;
+}) {
   const [orden, setOrden] = useState('');
   const [result, setResult] = useState<PedidoResult | null>(null);
   const [loading, setLoading] = useState(false);
+  const [editingContact, setEditingContact] = useState(false);
+  const [editNombre, setEditNombre] = useState('');
+  const [editWhatsapp, setEditWhatsapp] = useState('');
 
   async function consultar() {
     const q = orden.trim();
@@ -607,8 +631,36 @@ function OrderStatusLookup() {
     }
   }
 
+  function startEditContact() {
+    setEditNombre(contact?.nombre ?? '');
+    setEditWhatsapp(contact?.whatsapp ?? '');
+    setEditingContact(true);
+  }
+
   return (
     <div className="mt-12 border-t border-neutral-200 pt-8">
+      {/* Saved contact indicator */}
+      {contact && !editingContact && (
+        <div className="mb-6 flex items-center justify-between rounded-xl bg-neutral-50 border border-neutral-200 px-4 py-3">
+          <div>
+            <p className="text-xs text-neutral-500">Tus avisos van a</p>
+            <p className="text-sm font-semibold text-neutral-800">{contact.nombre} · {contact.whatsapp}</p>
+          </div>
+          <button onClick={startEditContact} className="text-xs text-neutral-500 hover:text-voxoy-red transition">
+            ✏️ cambiar
+          </button>
+        </div>
+      )}
+      {editingContact && (
+        <div className="mb-6 rounded-xl border border-neutral-200 bg-white p-4 space-y-2">
+          <input value={editNombre} onChange={(e) => setEditNombre(e.target.value)} placeholder="Nombre" className="w-full rounded-xl border border-neutral-200 px-3 py-2 text-sm focus:border-voxoy-red focus:outline-none" />
+          <input value={editWhatsapp} onChange={(e) => setEditWhatsapp(e.target.value)} placeholder="WhatsApp" className="w-full rounded-xl border border-neutral-200 px-3 py-2 text-sm focus:border-voxoy-red focus:outline-none" />
+          <div className="flex gap-2">
+            <button onClick={() => { if (editNombre.trim() && editWhatsapp.trim()) { onEditContact({ nombre: editNombre.trim(), whatsapp: editWhatsapp.trim() }); setEditingContact(false); } }} className="flex-1 rounded-xl bg-voxoy-red py-2 text-sm font-semibold text-white hover:bg-voxoy-red-dark transition">Guardar</button>
+            <button onClick={() => setEditingContact(false)} className="rounded-xl border border-neutral-200 px-4 py-2 text-sm text-neutral-600 hover:bg-neutral-50 transition">Cancelar</button>
+          </div>
+        </div>
+      )}
       <h3 className="text-sm font-semibold text-neutral-700 mb-1">¿Ya tienes un pedido con Voxoy?</h3>
       <p className="text-xs text-neutral-500 mb-4">Consulta el estado de tu paquete con el número de orden de tu tienda.</p>
       <div className="flex gap-2">
