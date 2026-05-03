@@ -26,12 +26,14 @@ export const GET: APIRoute = async () => {
   }
 };
 
-// Update status of a single analysis
+// Update status and/or notes of a single analysis
 export const PATCH: APIRoute = async ({ request }) => {
   try {
-    const { id, status } = await request.json();
-    if (!id || !status) {
-      return new Response(JSON.stringify({ error: 'id y status requeridos' }), {
+    const body = await request.json();
+    const { id, status, notes } = body as { id?: string; status?: string; notes?: string };
+
+    if (!id) {
+      return new Response(JSON.stringify({ error: 'id requerido' }), {
         status: 400,
         headers: HEADERS,
       });
@@ -40,10 +42,19 @@ export const PATCH: APIRoute = async ({ request }) => {
     const db = (env as any).DB;
     if (!db) return new Response(JSON.stringify({ ok: true }), { status: 200, headers: HEADERS });
 
-    await db
-      .prepare('UPDATE analyses SET status = ? WHERE id = ?')
-      .bind(status, id)
-      .run();
+    if (status !== undefined) {
+      await db
+        .prepare('UPDATE analyses SET status = ? WHERE id = ?')
+        .bind(status, id)
+        .run();
+    }
+
+    if (notes !== undefined) {
+      await db
+        .prepare("UPDATE analyses SET data = json_set(data, '$._notes', ?) WHERE id = ?")
+        .bind(notes, id)
+        .run();
+    }
 
     return new Response(JSON.stringify({ ok: true }), { status: 200, headers: HEADERS });
   } catch (err: any) {

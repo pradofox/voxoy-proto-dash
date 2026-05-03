@@ -3,7 +3,7 @@ import type { AnalisisCompleto, EstadoPedido, NivelConfianza } from '../lib/type
 import { colorDeNivel } from '../lib/types';
 import { formatMXN, formatUSD, getTier } from '../lib/tabulador';
 
-type Filter = 'todos' | 'flagueados' | 'confiables' | 'pendientes';
+type Filter = 'todos' | 'flagueados' | 'confiables' | 'pendientes' | 'en_pobox';
 
 function buildWhatsappLink(item: AnalisisCompleto): string {
   const { extraido, calculo } = item;
@@ -82,6 +82,13 @@ export default function AdminApp() {
     setSelected((prev) => (prev?.id === id ? { ...prev, _status: status } : prev));
   }
 
+  function handleNotesChange(id: string, notes: string) {
+    setHistory((prev) =>
+      prev.map((item) => (item.id === id ? { ...item, _notes: notes } : item)),
+    );
+    setSelected((prev) => (prev?.id === id ? { ...prev, _notes: notes } : prev));
+  }
+
   useEffect(() => {
     fetchHistory();
   }, []);
@@ -100,6 +107,7 @@ export default function AdminApp() {
     if (filter === 'flagueados') return item.nivel === 'baja' || item.nivel === 'sospechoso';
     if (filter === 'confiables') return item.nivel === 'alta';
     if (filter === 'pendientes') return !item._status || item._status === 'pendiente';
+    if (filter === 'en_pobox') return item._status === 'en_pobox';
     return true;
   });
 
@@ -112,6 +120,7 @@ export default function AdminApp() {
     comisiones: history.reduce((s, i) => s + i.calculo.fee_mxn, 0),
     fraude_usd: calcFraudeDetectado(history),
     pendientes: history.filter((i) => !i._status || i._status === 'pendiente').length,
+    en_pobox: history.filter((i) => i._status === 'en_pobox').length,
     duplicados,
   };
 
@@ -207,6 +216,7 @@ export default function AdminApp() {
             {[
               { label: 'Total', val: stats.total, color: 'text-voxoy-black' },
               { label: '🕐 Pendientes', val: stats.pendientes, color: 'text-amber-600' },
+              ...(stats.en_pobox > 0 ? [{ label: '📦 En PO Box', val: stats.en_pobox, color: 'text-blue-600' }] : []),
               { label: '🚨 Flagueados', val: stats.flagueados, color: 'text-voxoy-red' },
               { label: '✅ Confiables', val: stats.confiables, color: 'text-emerald-600' },
               ...(stats.duplicados > 0 ? [{ label: '♻️ Duplicados', val: stats.duplicados, color: 'text-purple-700' }] : []),
@@ -229,6 +239,9 @@ export default function AdminApp() {
           <div className="mb-4 flex flex-wrap gap-2">
             <FilterPill active={filter === 'todos'} onClick={() => setFilter('todos')}>Todos ({history.length})</FilterPill>
             <FilterPill active={filter === 'pendientes'} onClick={() => setFilter('pendientes')}>🕐 Pendientes ({stats.pendientes})</FilterPill>
+            {stats.en_pobox > 0 && (
+              <FilterPill active={filter === 'en_pobox'} onClick={() => setFilter('en_pobox')}>📦 En PO Box ({stats.en_pobox})</FilterPill>
+            )}
             <FilterPill active={filter === 'flagueados'} onClick={() => setFilter('flagueados')}>🚨 Flagueados ({stats.flagueados})</FilterPill>
             <FilterPill active={filter === 'confiables'} onClick={() => setFilter('confiables')}>✅ Confiables ({stats.confiables})</FilterPill>
           </div>
@@ -269,7 +282,7 @@ export default function AdminApp() {
       )}
 
       {selected && (
-        <DetailModal item={selected} onClose={() => setSelected(null)} onStatusChange={handleStatusChange} />
+        <DetailModal item={selected} onClose={() => setSelected(null)} onStatusChange={handleStatusChange} onNotesChange={handleNotesChange} />
       )}
     </div>
   );
@@ -443,10 +456,11 @@ function FilterPill({ active, onClick, children }: { active: boolean; onClick: (
 
 // ── Status helpers ─────────────────────────────────────────────────────────
 
-const STATUS_CONFIG: Record<EstadoPedido, { label: string; emoji: string; pill: string }> = {
-  pendiente: { label: 'Pendiente', emoji: '🕐', pill: 'bg-neutral-100 text-neutral-600' },
-  entregado: { label: 'Entregado', emoji: '✅', pill: 'bg-emerald-100 text-emerald-700' },
-  rechazado: { label: 'Rechazado', emoji: '❌', pill: 'bg-red-100 text-red-700' },
+const STATUS_CONFIG: Record<EstadoPedido, { label: string; emoji: string; pill: string; activeClass: string }> = {
+  pendiente: { label: 'Pendiente', emoji: '🕐', pill: 'bg-neutral-100 text-neutral-600', activeClass: 'bg-neutral-700 border-neutral-700 text-white' },
+  en_pobox: { label: 'En PO Box', emoji: '📦', pill: 'bg-blue-100 text-blue-700', activeClass: 'bg-blue-600 border-blue-600 text-white' },
+  entregado: { label: 'Entregado', emoji: '✅', pill: 'bg-emerald-100 text-emerald-700', activeClass: 'bg-emerald-600 border-emerald-600 text-white' },
+  rechazado: { label: 'Rechazado', emoji: '❌', pill: 'bg-red-100 text-red-700', activeClass: 'bg-red-600 border-red-600 text-white' },
 };
 
 // ── ReciboRow ──────────────────────────────────────────────────────────────
@@ -506,10 +520,12 @@ function DetailModal({
   item,
   onClose,
   onStatusChange,
+  onNotesChange,
 }: {
   item: AnalisisCompleto;
   onClose: () => void;
   onStatusChange: (id: string, status: EstadoPedido) => void;
+  onNotesChange: (id: string, notes: string) => void;
 }) {
   const colors = colorDeNivel(item.nivel);
   const { extraido, verificacion, calculo } = item;
@@ -573,7 +589,7 @@ function DetailModal({
               Estado del pedido
             </p>
             <div className="flex gap-2 flex-wrap">
-              {(['pendiente', 'entregado', 'rechazado'] as EstadoPedido[]).map((s) => {
+              {(['pendiente', 'en_pobox', 'entregado', 'rechazado'] as EstadoPedido[]).map((s) => {
                 const cfg = STATUS_CONFIG[s];
                 const isActive = estadoActual === s;
                 return (
@@ -583,11 +599,7 @@ function DetailModal({
                     disabled={updating || isActive}
                     className={`flex items-center gap-1.5 rounded-full border px-4 py-2 text-sm font-medium transition ${
                       isActive
-                        ? s === 'entregado'
-                          ? 'bg-emerald-600 border-emerald-600 text-white'
-                          : s === 'rechazado'
-                            ? 'bg-red-600 border-red-600 text-white'
-                            : 'bg-neutral-700 border-neutral-700 text-white'
+                        ? cfg.activeClass
                         : 'border-neutral-300 text-neutral-600 hover:border-neutral-400 hover:bg-neutral-50'
                     } disabled:cursor-default`}
                   >
@@ -680,6 +692,10 @@ function DetailModal({
               )}
             </Section>
           )}
+
+          {/* ── Notas internas ────────────────────────────────────── */}
+          <NotesBox item={item} onSaved={(notes) => onNotesChange(item.id, notes)} />
+
         </div>
       </div>
     </div>
@@ -780,6 +796,52 @@ function TierCard({ categoria, feePct }: { categoria: string; feePct: number }) 
           </span>
         ))}
       </div>
+    </div>
+  );
+}
+
+// ── NotesBox ───────────────────────────────────────────────────────────────
+
+function NotesBox({ item, onSaved }: { item: AnalisisCompleto; onSaved: (notes: string) => void }) {
+  const [notes, setNotes] = useState(item._notes ?? '');
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+
+  async function save() {
+    setSaving(true);
+    try {
+      await fetch('/api/history', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: item.id, notes }),
+      });
+      onSaved(notes);
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2500);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div>
+      <h3 className="text-xs uppercase tracking-wider text-neutral-500 mb-2 font-semibold">
+        Notas internas del staff
+      </h3>
+      <textarea
+        value={notes}
+        onChange={(e) => { setNotes(e.target.value); setSaved(false); }}
+        rows={3}
+        placeholder="Observaciones, discrepancias físicas, notas de verificación..."
+        className="w-full rounded-xl border border-neutral-200 px-4 py-3 text-sm text-neutral-700 placeholder:text-neutral-400 focus:border-voxoy-red focus:outline-none focus:ring-1 focus:ring-voxoy-red resize-none"
+      />
+      <button
+        onClick={save}
+        disabled={saving}
+        className="mt-2 rounded-full bg-neutral-800 px-5 py-2 text-sm font-semibold text-white transition hover:bg-neutral-700 disabled:opacity-50"
+      >
+        {saving ? 'Guardando...' : saved ? '✓ Guardado' : 'Guardar nota'}
+      </button>
     </div>
   );
 }

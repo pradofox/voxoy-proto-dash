@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { AnalisisCompleto } from '../lib/types';
-import { formatMXN, formatUSD, getTier } from '../lib/tabulador';
+import { TIERS, calcularFee, formatMXN, formatUSD, getTier } from '../lib/tabulador';
+import type { Categoria } from '../lib/tabulador';
 
 const STORAGE_KEY = 'voxoy_history_v1';
 const MAX_HISTORY = 20;
@@ -128,89 +129,221 @@ function IdleView({
   setDragOver: (v: boolean) => void;
   inputRef: React.RefObject<HTMLInputElement | null>;
 }) {
+  const [mode, setMode] = useState<'recibo' | 'calculadora'>('recibo');
+
   return (
     <div>
-      <div className="text-center mb-10">
+      <div className="text-center mb-8">
         <h1 className="text-4xl sm:text-5xl font-extrabold tracking-tight text-voxoy-black mb-4">
           Calcula tu envío <span className="text-voxoy-red">al instante</span>
         </h1>
         <p className="text-lg text-neutral-600 max-w-xl mx-auto">
-          Sube el recibo de tu compra en EE.UU. y descubre cuánto te cuesta traerlo a México.
-          Sin esperas, sin sorpresas.
+          Sube tu recibo de EE.UU. o ingresa el precio directamente.
         </p>
       </div>
 
-      <div
-        onDragOver={(e) => {
-          e.preventDefault();
-          setDragOver(true);
-        }}
-        onDragLeave={() => setDragOver(false)}
-        onDrop={onDrop}
-        className={`relative rounded-2xl border-2 border-dashed p-12 text-center transition ${
-          dragOver
-            ? 'border-voxoy-red bg-red-50'
-            : 'border-neutral-300 bg-neutral-50 hover:border-neutral-400'
-        }`}
-      >
-        <input
-          ref={inputRef}
-          type="file"
-          accept="application/pdf"
-          onChange={onSelectFile}
-          className="hidden"
-          id="file-upload"
-        />
-        <div className="mb-4 flex justify-center">
-          <div className="rounded-full bg-white p-4 shadow-sm">
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              fill="none"
-              viewBox="0 0 24 24"
-              strokeWidth="1.5"
-              stroke="currentColor"
-              className="h-10 w-10 text-voxoy-red"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z"
-              />
-            </svg>
-          </div>
-        </div>
-        <h2 className="text-xl font-semibold text-voxoy-black mb-2">
-          Arrastra tu recibo aquí
-        </h2>
-        <p className="text-neutral-600 mb-6 text-sm">PDF de cualquier tienda de EE.UU. (max 10MB)</p>
+      {/* Mode tabs */}
+      <div className="flex gap-1 rounded-xl border border-neutral-200 bg-neutral-50 p-1 mb-6">
         <button
-          onClick={() => inputRef.current?.click()}
-          className="rounded-full bg-voxoy-red px-8 py-3 font-semibold text-white shadow-sm transition hover:bg-voxoy-red-dark"
+          onClick={() => setMode('recibo')}
+          className={`flex-1 rounded-lg py-2.5 text-sm font-semibold transition flex items-center justify-center gap-2 ${
+            mode === 'recibo' ? 'bg-white shadow-sm text-voxoy-black' : 'text-neutral-500 hover:text-neutral-700'
+          }`}
         >
-          Seleccionar recibo
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.8" stroke="currentColor" className="h-4 w-4">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" />
+          </svg>
+          Subir recibo PDF
         </button>
-        <p className="mt-6 text-xs text-neutral-400">
-          Demo. Nada se guarda en servidor.
-        </p>
+        <button
+          onClick={() => setMode('calculadora')}
+          className={`flex-1 rounded-lg py-2.5 text-sm font-semibold transition flex items-center justify-center gap-2 ${
+            mode === 'calculadora' ? 'bg-white shadow-sm text-voxoy-black' : 'text-neutral-500 hover:text-neutral-700'
+          }`}
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.8" stroke="currentColor" className="h-4 w-4">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 15.75V18m-7.5-6.75h.008v.008H8.25v-.008Zm0 2.25h.008v.008H8.25v-.008Zm0 2.25h.008v.008H8.25v-.008Zm2.498-4.5h.008v.008h-.008v-.008Zm0 2.25h.008v.008h-.008v-.008Zm0 2.25h.008v.008h-.008v-.008Zm2.498-4.5h.008v.008h-.008v-.008Zm0 2.25h.008v.008h-.008v-.008ZM8.25 6h7.5v2.25h-7.5V6ZM12 2.25c-1.892 0-3.758.11-5.593.322C5.307 2.7 4.5 3.65 4.5 4.757V19.5a2.25 2.25 0 0 0 2.25 2.25h10.5a2.25 2.25 0 0 0 2.25-2.25V4.757c0-1.108-.806-2.057-1.907-2.185A48.507 48.507 0 0 0 12 2.25Z" />
+          </svg>
+          Cotización rápida
+        </button>
       </div>
 
-      <div className="mt-12 grid grid-cols-1 sm:grid-cols-3 gap-6 text-center">
-        <FeatureCard
-          icon="🤖"
-          title="Lectura automática"
-          desc="Extraemos producto, tienda y precio en segundos."
-        />
-        <FeatureCard
-          icon="🎯"
-          title="Tarifa precisa"
-          desc="Aplicamos el tabulador real de Voxoy automáticamente."
-        />
-        <FeatureCard
-          icon="🔒"
-          title="Verificación de mercado"
-          desc="Validamos el precio contra fuentes reales."
-        />
+      {mode === 'recibo' ? (
+        <>
+          <div
+            onDragOver={(e) => {
+              e.preventDefault();
+              setDragOver(true);
+            }}
+            onDragLeave={() => setDragOver(false)}
+            onDrop={onDrop}
+            className={`relative rounded-2xl border-2 border-dashed p-12 text-center transition ${
+              dragOver
+                ? 'border-voxoy-red bg-red-50'
+                : 'border-neutral-300 bg-neutral-50 hover:border-neutral-400'
+            }`}
+          >
+            <input
+              ref={inputRef}
+              type="file"
+              accept="application/pdf"
+              onChange={onSelectFile}
+              className="hidden"
+              id="file-upload"
+            />
+            <div className="mb-4 flex justify-center">
+              <div className="rounded-full bg-white p-4 shadow-sm">
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  strokeWidth="1.5"
+                  stroke="currentColor"
+                  className="h-10 w-10 text-voxoy-red"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z"
+                  />
+                </svg>
+              </div>
+            </div>
+            <h2 className="text-xl font-semibold text-voxoy-black mb-2">
+              Arrastra tu recibo aquí
+            </h2>
+            <p className="text-neutral-600 mb-6 text-sm">PDF de cualquier tienda de EE.UU. (max 10MB)</p>
+            <button
+              onClick={() => inputRef.current?.click()}
+              className="rounded-full bg-voxoy-red px-8 py-3 font-semibold text-white shadow-sm transition hover:bg-voxoy-red-dark"
+            >
+              Seleccionar recibo
+            </button>
+            <p className="mt-6 text-xs text-neutral-400">
+              Demo. Nada se guarda en servidor.
+            </p>
+          </div>
+
+          <div className="mt-10 grid grid-cols-1 sm:grid-cols-3 gap-6 text-center">
+            <FeatureCard
+              icon="🤖"
+              title="Lectura automática"
+              desc="Extraemos producto, tienda y precio en segundos."
+            />
+            <FeatureCard
+              icon="🎯"
+              title="Tarifa precisa"
+              desc="Aplicamos el tabulador real de Voxoy automáticamente."
+            />
+            <FeatureCard
+              icon="🔒"
+              title="Verificación de mercado"
+              desc="Validamos el precio contra fuentes reales."
+            />
+          </div>
+        </>
+      ) : (
+        <QuoteCalculator />
+      )}
+    </div>
+  );
+}
+
+// ── Quote Calculator ───────────────────────────────────────────────────────
+
+function QuoteCalculator() {
+  const [categoria, setCategoria] = useState<Categoria>('medio');
+  const [precioStr, setPrecioStr] = useState('');
+
+  const precio = parseFloat(precioStr) || 0;
+  const result = precio > 0 ? calcularFee(precio, categoria) : null;
+  const tier = TIERS.find((t) => t.categoria === categoria)!;
+
+  return (
+    <div className="rounded-2xl border border-neutral-200 bg-white p-6 sm:p-8 shadow-sm">
+      {/* Category selector */}
+      <div className="mb-6">
+        <label className="text-sm font-semibold text-neutral-700 block mb-3">
+          Tipo de producto
+        </label>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+          {TIERS.map((t) => (
+            <button
+              key={t.categoria}
+              onClick={() => setCategoria(t.categoria)}
+              className={`rounded-xl border p-3 text-left transition ${
+                categoria === t.categoria
+                  ? 'border-voxoy-red bg-red-50 ring-1 ring-voxoy-red'
+                  : 'border-neutral-200 bg-neutral-50 hover:border-neutral-300'
+              }`}
+            >
+              <p className="text-xs font-bold text-voxoy-black capitalize leading-tight">
+                {t.categoria.replace('-', ' ')}
+              </p>
+              <p className="text-[10px] text-neutral-500 mt-0.5 leading-tight line-clamp-2">
+                {t.descripcion}
+              </p>
+              <p className="text-sm font-extrabold text-voxoy-red mt-1.5">
+                {(t.fee * 100).toFixed(0)}%
+              </p>
+            </button>
+          ))}
+        </div>
       </div>
+
+      {/* Price input */}
+      <div className="mb-6">
+        <label className="text-sm font-semibold text-neutral-700 block mb-2">
+          Precio del producto en EE.UU.
+        </label>
+        <div className="relative">
+          <span className="absolute left-4 top-1/2 -translate-y-1/2 text-lg text-neutral-400 font-semibold select-none">$</span>
+          <input
+            type="number"
+            min="0"
+            step="0.01"
+            value={precioStr}
+            onChange={(e) => setPrecioStr(e.target.value)}
+            placeholder="0.00"
+            className="w-full rounded-xl border border-neutral-200 pl-9 pr-20 py-3.5 text-2xl font-bold text-voxoy-black placeholder:text-neutral-300 focus:border-voxoy-red focus:outline-none focus:ring-1 focus:ring-voxoy-red"
+          />
+          <span className="absolute right-4 top-1/2 -translate-y-1/2 text-sm text-neutral-400 font-medium">USD</span>
+        </div>
+      </div>
+
+      {/* Result */}
+      {result ? (
+        <>
+          {result.fee_aplicado === 'preferencial' ? (
+            <div className="rounded-xl bg-amber-50 border border-amber-200 p-5 mb-4">
+              <p className="font-semibold text-amber-900 mb-1">⭐ Producto de alto valor (+$1,500 USD)</p>
+              <p className="text-sm text-amber-800">
+                Este producto califica para tarifa preferencial. Contacta a Voxoy para tu cotización personalizada.
+              </p>
+            </div>
+          ) : (
+            <div className="rounded-xl bg-voxoy-red p-5 text-white mb-4">
+              <p className="text-xs uppercase tracking-wider opacity-80 mb-1">Comisión Voxoy</p>
+              <p className="text-4xl font-extrabold">{formatMXN(result.fee_mxn)}</p>
+              <div className="flex items-center gap-4 mt-2 text-sm opacity-80">
+                <span>{(result.fee_porcentaje * 100).toFixed(0)}% sobre {formatUSD(precio)}</span>
+              </div>
+              {result.fee_aplicado === 'minimo' && (
+                <p className="text-xs opacity-70 mt-1">(tarifa mínima aplicada)</p>
+              )}
+            </div>
+          )}
+          <div className="rounded-lg border border-neutral-200 bg-neutral-50 p-3 text-sm">
+            <span className="text-neutral-500">📐 </span>
+            <span className="text-neutral-700 font-medium">{tier.dimensiones}</span>
+            <span className="text-neutral-400 ml-2">· {tier.descripcion}</span>
+          </div>
+        </>
+      ) : (
+        <div className="rounded-xl border-2 border-dashed border-neutral-200 p-8 text-center text-neutral-400 text-sm">
+          Ingresa el precio para ver la cotización
+        </div>
+      )}
     </div>
   );
 }
@@ -360,19 +493,25 @@ function ErrorView({ message, onReset }: { message: string; onReset: () => void 
 
 type PedidoResult =
   | { found: false }
-  | { found: true; tienda: string; producto: string; precio_usd: number; fee_mxn: number; status: 'pendiente' | 'entregado' | 'rechazado'; timestamp: number };
+  | { found: true; tienda: string; producto: string; precio_usd: number; fee_mxn: number; status: 'pendiente' | 'en_pobox' | 'entregado' | 'rechazado'; timestamp: number };
 
 const STATUS_INFO = {
   pendiente: {
     emoji: '🕐',
     label: 'En proceso',
-    desc: 'Tu paquete está siendo procesado. Te avisaremos cuando esté listo para recoger.',
+    desc: 'Tu recibo fue recibido y está siendo procesado. Te avisaremos cuando tu paquete llegue a McAllen.',
     color: 'bg-amber-50 border-amber-200 text-amber-900',
+  },
+  en_pobox: {
+    emoji: '📦',
+    label: 'Llegó a McAllen',
+    desc: 'Tu paquete llegó al PO Box Voxoy en McAllen, TX. Pasa a recogerlo a tu sucursal de lunes a sábado 9am - 6pm.',
+    color: 'bg-blue-50 border-blue-200 text-blue-900',
   },
   entregado: {
     emoji: '✅',
-    label: 'Listo para recoger',
-    desc: 'Tu paquete llegó al PO Box Voxoy. Pasa a recogerlo de lunes a sábado 9am - 6pm.',
+    label: 'Entregado',
+    desc: 'Tu paquete fue entregado. Gracias por confiar en Voxoy.',
     color: 'bg-emerald-50 border-emerald-200 text-emerald-900',
   },
   rechazado: {
@@ -440,9 +579,9 @@ function OrderStatusLookup() {
                   <p className="font-semibold">{STATUS_INFO[result.status].label}</p>
                   <p className="text-xs mt-0.5 opacity-80">{result.tienda} · {result.producto}</p>
                   <p className="text-sm mt-2">{STATUS_INFO[result.status].desc}</p>
-                  {result.status === 'entregado' && (
+                  {(result.status === 'en_pobox' || result.status === 'entregado') && (
                     <p className="text-sm font-semibold mt-2">
-                      Comisión a pagar: {formatMXN(result.fee_mxn)}
+                      Comisión a pagar al recoger: {formatMXN(result.fee_mxn)}
                     </p>
                   )}
                 </div>

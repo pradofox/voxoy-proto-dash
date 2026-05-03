@@ -18,7 +18,7 @@ export interface VerificacionMercado {
 }
 
 export type NivelConfianza = 'alta' | 'media' | 'baja' | 'sospechoso';
-export type EstadoPedido = 'pendiente' | 'entregado' | 'rechazado';
+export type EstadoPedido = 'pendiente' | 'en_pobox' | 'entregado' | 'rechazado';
 
 export interface AnalisisCompleto {
   id: string;
@@ -35,6 +35,7 @@ export interface AnalisisCompleto {
   error?: string;
   _status?: EstadoPedido;
   _duplicado?: boolean;
+  _notes?: string;
 }
 
 export function nivelDeScore(score: number): NivelConfianza {
