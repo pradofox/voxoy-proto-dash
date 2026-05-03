@@ -138,7 +138,8 @@ export default function CustomerApp() {
   }
 
   const currentStatus = state.status === 'result' ? (statusMap[state.data.id] ?? 'pendiente') : undefined;
-  const showContactPrompt = state.status === 'result' && !contact && !contactPrompted;
+  // Always show contact prompt when there's a result (good for demo; change to !contact && !contactPrompted for production)
+  const showContactPrompt = state.status === 'result' && currentStatus !== 'entregado' && currentStatus !== 'rechazado';
 
   return (
     <div className="mx-auto max-w-3xl px-4 py-12 sm:px-6 sm:py-16">
@@ -491,9 +492,9 @@ function ResultView({
         <p className="mt-1">Pasas a recoger a tu sucursal y pagas en efectivo.</p>
       </div>
 
-      {/* Contact capture — only shown on first visit */}
+      {/* Contact capture — adapts to current status */}
       {showContactPrompt && onSaveContact && onDismissContact && (
-        <ContactCaptureCard onSave={onSaveContact} onDismiss={onDismissContact} />
+        <ContactCaptureCard onSave={onSaveContact} onDismiss={onDismissContact} currentStatus={currentStatus} />
       )}
     </div>
   );
@@ -501,22 +502,37 @@ function ResultView({
 
 // ── ContactCaptureCard ─────────────────────────────────────────────────────
 
+const CONTACT_COPY: Record<NonNullable<EstadoPedido | 'pendiente'>, { title: string; desc: string }> = {
+  pendiente: {
+    title: '📲 ¿Te avisamos cuando llegue?',
+    desc: 'Danos tu WhatsApp y te avisamos en cuanto tu paquete llegue a McAllen.',
+  },
+  en_pobox: {
+    title: '📦 ¡Tu paquete ya está aquí!',
+    desc: '¿Quieres que te enviemos la dirección y horarios de recoger por WhatsApp?',
+  },
+  entregado: { title: '', desc: '' },
+  rechazado: { title: '', desc: '' },
+};
+
 function ContactCaptureCard({
   onSave,
   onDismiss,
+  currentStatus,
 }: {
   onSave: (c: ContactInfo) => void;
   onDismiss: () => void;
+  currentStatus?: EstadoPedido;
 }) {
   const [nombre, setNombre] = useState('');
   const [whatsapp, setWhatsapp] = useState('');
 
+  const copy = CONTACT_COPY[currentStatus ?? 'pendiente'];
+
   return (
     <div className="mt-6 rounded-2xl border border-blue-200 bg-blue-50 p-5">
-      <p className="text-sm font-semibold text-blue-900 mb-0.5">📲 ¿Te avisamos cuando llegue?</p>
-      <p className="text-xs text-blue-700 mb-4">
-        Guardamos tu contacto una vez y te notificamos por WhatsApp cuando tu paquete llegue a McAllen.
-      </p>
+      <p className="text-sm font-semibold text-blue-900 mb-0.5">{copy.title}</p>
+      <p className="text-xs text-blue-700 mb-4">{copy.desc}</p>
       <div className="space-y-2 mb-4">
         <input
           type="text"

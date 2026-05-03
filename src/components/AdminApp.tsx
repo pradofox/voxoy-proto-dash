@@ -67,6 +67,8 @@ export default function AdminApp() {
   });
   const [editRate, setEditRate] = useState(false);
   const [rateInput, setRateInput] = useState('');
+  const [rateFetching, setRateFetching] = useState(false);
+  const [rateUpdatedAt, setRateUpdatedAt] = useState<Date | null>(null);
   const [manualForm, setManualForm] = useState<ManualForm>({ open: false, tienda: '', producto: '', numero_orden: '', saving: false });
 
   async function fetchHistory() {
@@ -175,6 +177,28 @@ export default function AdminApp() {
     }
     setEditRate(false);
   }
+
+  async function fetchLiveRate() {
+    setRateFetching(true);
+    try {
+      const res = await fetch('https://open.er-api.com/v6/latest/USD');
+      const data = await res.json();
+      const mxn = data?.rates?.MXN;
+      if (mxn && mxn > 0) {
+        setTipoCambio(Math.round(mxn * 100) / 100);
+        try { localStorage.setItem('voxoy_tipo_cambio', String(Math.round(mxn * 100) / 100)); } catch {}
+        setRateUpdatedAt(new Date());
+      }
+    } catch {}
+    setRateFetching(false);
+  }
+
+  useEffect(() => {
+    // Auto-fetch live rate if none saved locally
+    try {
+      if (!localStorage.getItem('voxoy_tipo_cambio')) fetchLiveRate();
+    } catch { fetchLiveRate(); }
+  }, []);
 
   function handleStatusChange(id: string, status: EstadoPedido) {
     setHistory((prev) =>
@@ -287,10 +311,20 @@ export default function AdminApp() {
                 <span>MXN/USD</span>
               </>
             ) : (
-              <button onClick={() => { setRateInput(tipoCambio.toString()); setEditRate(true); }} className="flex items-center gap-1 hover:text-neutral-700 transition">
-                <span className="font-semibold text-neutral-700">${tipoCambio.toFixed(2)}</span>
-                <span>MXN/USD ✏️</span>
-              </button>
+              <>
+                <button onClick={() => { setRateInput(tipoCambio.toString()); setEditRate(true); }} className="flex items-center gap-1 hover:text-neutral-700 transition" title="Editar tipo de cambio">
+                  <span className="font-semibold text-neutral-700">${tipoCambio.toFixed(2)}</span>
+                  <span>MXN/USD</span>
+                </button>
+                <button onClick={fetchLiveRate} disabled={rateFetching} title="Actualizar con tipo de cambio real" className="ml-1 text-neutral-400 hover:text-voxoy-red transition disabled:opacity-50">
+                  {rateFetching ? '…' : '🔄'}
+                </button>
+                {rateUpdatedAt && (
+                  <span className="text-neutral-400 text-[10px]">
+                    · {rateUpdatedAt.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })}
+                  </span>
+                )}
+              </>
             )}
           </div>
         </div>
