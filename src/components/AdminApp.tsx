@@ -48,6 +48,7 @@ export default function AdminApp() {
   const [loading, setLoading] = useState(true);
   const [clearing, setClearing] = useState(false);
   const [search, setSearch] = useState('');
+  const [tab, setTab] = useState<'pedidos' | 'metricas'>('pedidos');
 
   async function fetchHistory() {
     setLoading(true);
@@ -155,128 +156,120 @@ export default function AdminApp() {
     <div className="mx-auto max-w-6xl px-4 py-8 sm:py-10 sm:px-6">
 
       {/* Header */}
-      <div className="mb-6 flex items-start justify-between gap-3">
-        <div>
-          <h1 className="text-2xl sm:text-3xl font-extrabold text-voxoy-black mb-0.5">
+      <div className="mb-5 flex items-center justify-between gap-3">
+        <div className="flex items-center gap-4">
+          <h1 className="text-2xl sm:text-3xl font-extrabold text-voxoy-black">
             Panel de control
           </h1>
-          <p className="text-sm text-neutral-600">Recibos procesados · confianza por AI</p>
+          {/* Tabs */}
+          <div className="hidden sm:flex items-center gap-1 rounded-xl border border-neutral-200 bg-neutral-50 p-1">
+            <button
+              onClick={() => setTab('pedidos')}
+              className={`rounded-lg px-4 py-1.5 text-sm font-medium transition ${tab === 'pedidos' ? 'bg-white shadow-sm text-voxoy-black' : 'text-neutral-500 hover:text-neutral-700'}`}
+            >
+              Pedidos
+            </button>
+            <button
+              onClick={() => setTab('metricas')}
+              className={`rounded-lg px-4 py-1.5 text-sm font-medium transition ${tab === 'metricas' ? 'bg-white shadow-sm text-voxoy-black' : 'text-neutral-500 hover:text-neutral-700'}`}
+            >
+              Métricas
+            </button>
+          </div>
         </div>
         <div className="flex gap-2 shrink-0">
-          <button
-            onClick={fetchHistory}
-            className="flex items-center gap-1.5 rounded-full border border-neutral-300 px-3 py-2 text-sm font-medium text-neutral-700 transition hover:border-neutral-400"
-            title="Recargar"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.8" stroke="currentColor" className="h-4 w-4">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99" />
-            </svg>
+          <button onClick={fetchHistory} className="flex items-center gap-1.5 rounded-full border border-neutral-300 px-3 py-2 text-sm font-medium text-neutral-700 transition hover:border-neutral-400" title="Recargar">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.8" stroke="currentColor" className="h-4 w-4"><path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99" /></svg>
             <span className="hidden sm:inline">Recargar</span>
           </button>
-          <button
-            onClick={() => exportCSV(history)}
-            className="flex items-center gap-1.5 rounded-full border border-neutral-300 px-3 py-2 text-sm font-medium text-neutral-700 transition hover:border-neutral-400"
-            title="Exportar CSV"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.8" stroke="currentColor" className="h-4 w-4">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3" />
-            </svg>
+          <button onClick={() => exportCSV(history)} className="flex items-center gap-1.5 rounded-full border border-neutral-300 px-3 py-2 text-sm font-medium text-neutral-700 transition hover:border-neutral-400" title="Exportar CSV">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.8" stroke="currentColor" className="h-4 w-4"><path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3" /></svg>
             <span className="hidden sm:inline">CSV</span>
           </button>
-          <button
-            onClick={clearHistory}
-            disabled={clearing}
-            className="flex items-center gap-1.5 rounded-full border border-red-200 px-3 py-2 text-sm font-medium text-red-600 transition hover:bg-red-50 disabled:opacity-50"
-            title="Limpiar todo"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.8" stroke="currentColor" className="h-4 w-4">
-              <path strokeLinecap="round" strokeLinejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0" />
-            </svg>
+          <button onClick={clearHistory} disabled={clearing} className="flex items-center gap-1.5 rounded-full border border-red-200 px-3 py-2 text-sm font-medium text-red-600 transition hover:bg-red-50 disabled:opacity-50" title="Limpiar todo">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.8" stroke="currentColor" className="h-4 w-4"><path strokeLinecap="round" strokeLinejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0" /></svg>
             <span className="hidden sm:inline">{clearing ? 'Borrando...' : 'Limpiar'}</span>
           </button>
         </div>
       </div>
 
-      {/* Stats grid */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-6">
-        <StatCard label="Total" value={stats.total.toString()} />
-        <StatCard label="Pendientes" value={stats.pendientes.toString()} accent="amber" />
-        <StatCard label="Confiables" value={stats.confiables.toString()} accent="emerald" />
-        <StatCard label="Flagueados" value={stats.flagueados.toString()} accent="red" />
-        <StatCard
-          label="Duplicados"
-          value={stats.duplicados > 0 ? stats.duplicados.toString() : '—'}
-          accent={stats.duplicados > 0 ? 'red' : undefined}
-          sub={stats.duplicados > 0 ? 'mismo # de orden' : 'sin duplicados'}
-        />
-        <StatCard
-          label="Fraude detectado"
-          value={stats.fraude_usd > 0 ? formatUSD(stats.fraude_usd) : '—'}
-          accent={stats.fraude_usd > 0 ? 'red' : undefined}
-          sub={stats.fraude_usd > 0 ? 'subdeclarado vs mercado' : 'sin alteraciones'}
-        />
+      {/* Mobile tabs */}
+      <div className="flex sm:hidden gap-1 rounded-xl border border-neutral-200 bg-neutral-50 p-1 mb-5">
+        <button onClick={() => setTab('pedidos')} className={`flex-1 rounded-lg py-2 text-sm font-medium transition ${tab === 'pedidos' ? 'bg-white shadow-sm text-voxoy-black' : 'text-neutral-500'}`}>Pedidos</button>
+        <button onClick={() => setTab('metricas')} className={`flex-1 rounded-lg py-2 text-sm font-medium transition ${tab === 'metricas' ? 'bg-white shadow-sm text-voxoy-black' : 'text-neutral-500'}`}>Métricas</button>
       </div>
 
-      {/* Comisiones total */}
-      {stats.comisiones > 0 && (
-        <div className="mb-6 rounded-xl bg-voxoy-black px-5 py-3 flex items-center justify-between">
-          <p className="text-xs uppercase tracking-wider text-neutral-400">Comisiones acumuladas</p>
-          <p className="text-xl font-extrabold text-white">{formatMXN(stats.comisiones)}</p>
-        </div>
+      {/* ── TAB: PEDIDOS ─────────────────────────────────────────────────────── */}
+      {tab === 'pedidos' && (
+        <>
+          {/* Compact stats bar */}
+          <div className="flex flex-wrap gap-2 mb-5">
+            {[
+              { label: 'Total', val: stats.total, color: 'text-voxoy-black' },
+              { label: '🕐 Pendientes', val: stats.pendientes, color: 'text-amber-600' },
+              { label: '🚨 Flagueados', val: stats.flagueados, color: 'text-voxoy-red' },
+              { label: '✅ Confiables', val: stats.confiables, color: 'text-emerald-600' },
+              ...(stats.duplicados > 0 ? [{ label: '♻️ Duplicados', val: stats.duplicados, color: 'text-purple-700' }] : []),
+            ].map((s) => (
+              <div key={s.label} className="rounded-full border border-neutral-200 bg-white px-3 py-1.5 text-sm">
+                <span className="text-neutral-500">{s.label}: </span>
+                <span className={`font-bold ${s.color}`}>{s.val}</span>
+              </div>
+            ))}
+          </div>
+
+          {/* Search */}
+          <div className="mb-4 relative">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.8" stroke="currentColor" className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-neutral-400 pointer-events-none"><path strokeLinecap="round" strokeLinejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z" /></svg>
+            <input type="text" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Buscar por tienda, producto o # de orden..." className="w-full rounded-xl border border-neutral-200 bg-white pl-9 pr-4 py-2.5 text-sm text-neutral-800 placeholder:text-neutral-400 focus:border-voxoy-red focus:outline-none focus:ring-1 focus:ring-voxoy-red" />
+            {search && <button onClick={() => setSearch('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-neutral-600 text-lg leading-none">×</button>}
+          </div>
+
+          {/* Filter pills */}
+          <div className="mb-4 flex flex-wrap gap-2">
+            <FilterPill active={filter === 'todos'} onClick={() => setFilter('todos')}>Todos ({history.length})</FilterPill>
+            <FilterPill active={filter === 'pendientes'} onClick={() => setFilter('pendientes')}>🕐 Pendientes ({stats.pendientes})</FilterPill>
+            <FilterPill active={filter === 'flagueados'} onClick={() => setFilter('flagueados')}>🚨 Flagueados ({stats.flagueados})</FilterPill>
+            <FilterPill active={filter === 'confiables'} onClick={() => setFilter('confiables')}>✅ Confiables ({stats.confiables})</FilterPill>
+          </div>
+
+          {/* List */}
+          <div className="space-y-2">
+            {filtered.map((item) => (
+              <ReciboRow key={item.id} item={item} onClick={() => setSelected(item)} />
+            ))}
+            {filtered.length === 0 && (
+              <p className="text-center py-10 text-neutral-500 text-sm">No hay recibos en este filtro.</p>
+            )}
+          </div>
+        </>
       )}
 
-      {/* Activity Chart */}
-      <ActivityChart history={history} />
+      {/* ── TAB: MÉTRICAS ────────────────────────────────────────────────────── */}
+      {tab === 'metricas' && (
+        <>
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-4">
+            <StatCard label="Total recibos" value={stats.total.toString()} />
+            <StatCard label="Pendientes" value={stats.pendientes.toString()} accent="amber" />
+            <StatCard label="Confiables" value={stats.confiables.toString()} accent="emerald" />
+            <StatCard label="Flagueados" value={stats.flagueados.toString()} accent="red" />
+            <StatCard label="Duplicados" value={stats.duplicados > 0 ? stats.duplicados.toString() : '—'} accent={stats.duplicados > 0 ? 'red' : undefined} sub={stats.duplicados > 0 ? 'mismo # de orden' : 'sin duplicados'} />
+            <StatCard label="Fraude detectado" value={stats.fraude_usd > 0 ? formatUSD(stats.fraude_usd) : '—'} accent={stats.fraude_usd > 0 ? 'red' : undefined} sub={stats.fraude_usd > 0 ? 'subdeclarado' : 'sin alteraciones'} />
+          </div>
 
-      {/* Search */}
-      <div className="mb-4 relative">
-        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.8" stroke="currentColor" className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-neutral-400 pointer-events-none">
-          <path strokeLinecap="round" strokeLinejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z" />
-        </svg>
-        <input
-          type="text"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="Buscar por tienda, producto o # de orden..."
-          className="w-full rounded-xl border border-neutral-200 bg-white pl-9 pr-4 py-2.5 text-sm text-neutral-800 placeholder:text-neutral-400 focus:border-voxoy-red focus:outline-none focus:ring-1 focus:ring-voxoy-red"
-        />
-        {search && (
-          <button onClick={() => setSearch('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-neutral-600 text-lg leading-none">×</button>
-        )}
-      </div>
+          {stats.comisiones > 0 && (
+            <div className="mb-4 rounded-xl bg-voxoy-black px-5 py-4 flex items-center justify-between">
+              <p className="text-xs uppercase tracking-wider text-neutral-400">Comisiones acumuladas</p>
+              <p className="text-2xl font-extrabold text-white">{formatMXN(stats.comisiones)}</p>
+            </div>
+          )}
 
-      {/* Filters */}
-      <div className="mb-4 flex flex-wrap gap-2">
-        <FilterPill active={filter === 'todos'} onClick={() => setFilter('todos')}>
-          Todos ({history.length})
-        </FilterPill>
-        <FilterPill active={filter === 'pendientes'} onClick={() => setFilter('pendientes')}>
-          🕐 Pendientes ({stats.pendientes})
-        </FilterPill>
-        <FilterPill active={filter === 'flagueados'} onClick={() => setFilter('flagueados')}>
-          🚨 Flagueados ({stats.flagueados})
-        </FilterPill>
-        <FilterPill active={filter === 'confiables'} onClick={() => setFilter('confiables')}>
-          ✅ Confiables ({stats.confiables})
-        </FilterPill>
-      </div>
-
-      {/* List */}
-      <div className="space-y-2">
-        {filtered.map((item) => (
-          <ReciboRow key={item.id} item={item} onClick={() => setSelected(item)} />
-        ))}
-        {filtered.length === 0 && (
-          <p className="text-center py-10 text-neutral-500 text-sm">No hay recibos en este filtro.</p>
-        )}
-      </div>
+          <ActivityChart history={history} />
+        </>
+      )}
 
       {selected && (
-        <DetailModal
-          item={selected}
-          onClose={() => setSelected(null)}
-          onStatusChange={handleStatusChange}
-        />
+        <DetailModal item={selected} onClose={() => setSelected(null)} onStatusChange={handleStatusChange} />
       )}
     </div>
   );
