@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import type { AnalisisCompleto } from '../lib/types';
+import type { AnalisisCompleto, EstadoPedido } from '../lib/types';
 import { TIERS, calcularFee, formatMXN, formatUSD, getTier } from '../lib/tabulador';
 import type { Categoria } from '../lib/tabulador';
 
@@ -36,11 +36,25 @@ function readHistory(): AnalisisCompleto[] {
 export default function CustomerApp() {
   const [state, setState] = useState<AppState>({ status: 'idle' });
   const [history, setHistory] = useState<AnalisisCompleto[]>([]);
+  const [statusMap, setStatusMap] = useState<Record<string, EstadoPedido>>({});
   const inputRef = useRef<HTMLInputElement>(null);
   const [dragOver, setDragOver] = useState(false);
 
+  async function fetchStatuses(ids: string[]) {
+    if (ids.length === 0) return;
+    try {
+      const res = await fetch(`/api/statuses?ids=${ids.join(',')}`);
+      const map = await res.json();
+      setStatusMap((prev) => ({ ...prev, ...map }));
+    } catch {
+      // non-fatal
+    }
+  }
+
   useEffect(() => {
-    setHistory(readHistory());
+    const h = readHistory();
+    setHistory(h);
+    fetchStatuses(h.map((i) => i.id).filter(Boolean));
   }, []);
 
   async function processFile(file: File) {
@@ -54,6 +68,7 @@ export default function CustomerApp() {
         if (data.id) {
           saveToHistory(data);
           setHistory(readHistory());
+          setStatusMap((prev) => ({ ...prev, [data.id]: 'pendiente' }));
           setState({ status: 'result', data });
           return;
         }
@@ -61,6 +76,7 @@ export default function CustomerApp() {
       }
       saveToHistory(data);
       setHistory(readHistory());
+      setStatusMap((prev) => ({ ...prev, [data.id]: 'pendiente' }));
       setState({ status: 'result', data });
     } catch (err: any) {
       setState({ status: 'error', message: err?.message || 'Error desconocido' });
@@ -90,7 +106,11 @@ export default function CustomerApp() {
 
   function loadFromHistory(item: AnalisisCompleto) {
     setState({ status: 'result', data: item });
+    // Refresh this item's status from D1 when opened
+    fetchStatuses([item.id]);
   }
+
+  const currentStatus = state.status === 'result' ? (statusMap[state.data.id] ?? 'pendiente') : undefined;
 
   return (
     <div className="mx-auto max-w-3xl px-4 py-12 sm:px-6 sm:py-16">
@@ -104,11 +124,11 @@ export default function CustomerApp() {
         />
       )}
       {state.status === 'loading' && <LoadingView filename={state.filename} />}
-      {state.status === 'result' && <ResultView data={state.data} onReset={reset} />}
+      {state.status === 'result' && <ResultView data={state.data} onReset={reset} currentStatus={currentStatus} />}
       {state.status === 'error' && <ErrorView message={state.message} onReset={reset} />}
 
       {history.length > 0 && state.status === 'idle' && (
-        <HistoryPanel history={history} onClear={clearHistory} onSelect={loadFromHistory} />
+        <HistoryPanel history={history} onClear={clearHistory} onSelect={loadFromHistory} statusMap={statusMap} />
       )}
 
       {state.status === 'idle' && <OrderStatusLookup />}
@@ -383,10 +403,38 @@ function LoadingView({ filename }: { filename: string }) {
   );
 }
 
-function ResultView({ data, onReset }: { data: AnalisisCompleto; onReset: () => void }) {
+const RESULT_STATUS_INFO: Record<EstadoPedido, { emoji: string; label: string; desc: string; bg: string; text: string; border: string }> = {
+  pendiente: {
+    emoji: '🕐',
+    label: 'Pedido en proceso',
+    desc: 'Recibirás aviso cuando tu paquete llegue a McAllen.',
+    bg: 'bg-amber-50', text: 'text-amber-900', border: 'border-amber-200',
+  },
+  en_pobox: {
+    emoji: '📦',
+    label: 'Tu paquete llegó a McAllen',
+    desc: 'Pasa a recogerlo a tu sucursal Voxoy de lunes a sábado 9am - 6pm.',
+    bg: 'bg-blue-50', text: 'text-blue-900', border: 'border-blue-200',
+  },
+  entregado: {
+    emoji: '✅',
+    label: 'Entregado',
+    desc: 'Este paquete ya fue recogido.',
+    bg: 'bg-emerald-50', text: 'text-emerald-900', border: 'border-emerald-200',
+  },
+  rechazado: {
+    emoji: '❌',
+    label: 'Pedido rechazado',
+    desc: 'Este pedido no pudo ser procesado. Contacta a Voxoy.',
+    bg: 'bg-red-50', text: 'text-red-900', border: 'border-red-200',
+  },
+};
+
+function ResultView({ data, onReset, currentStatus }: { data: AnalisisCompleto; onReset: () => void; currentStatus?: EstadoPedido }) {
   const { extraido, calculo } = data;
   const tier = getTier(extraido.categoria_estimada);
   const isAltoValor = calculo.fee_aplicado === 'preferencial';
+  const statusInfo = currentStatus ? RESULT_STATUS_INFO[currentStatus] : null;
 
   return (
     <div>
@@ -403,6 +451,22 @@ function ResultView({ data, onReset }: { data: AnalisisCompleto; onReset: () => 
           </span>
         )}
       </div>
+
+      {/* Status banner */}
+      {statusInfo && (
+        <div className={`rounded-xl border ${statusInfo.border} ${statusInfo.bg} px-4 py-3 mb-5 flex items-start gap-3`}>
+          <span className="text-xl leading-none mt-0.5">{statusInfo.emoji}</span>
+          <div>
+            <p className={`text-sm font-semibold ${statusInfo.text}`}>{statusInfo.label}</p>
+            <p className={`text-xs mt-0.5 ${statusInfo.text} opacity-80`}>{statusInfo.desc}</p>
+            {currentStatus === 'en_pobox' && (
+              <p className={`text-sm font-bold mt-1 ${statusInfo.text}`}>
+                Comisión a pagar: {formatMXN(calculo.fee_mxn)}
+              </p>
+            )}
+          </div>
+        </div>
+      )}
 
       <div className="rounded-2xl border border-neutral-200 bg-white p-6 sm:p-8 shadow-sm">
         <div className="mb-1 text-xs font-medium uppercase tracking-wider text-neutral-500">
@@ -594,20 +658,29 @@ function OrderStatusLookup() {
   );
 }
 
+const HISTORY_STATUS_PILL: Record<EstadoPedido, { label: string; emoji: string; cls: string }> = {
+  pendiente: { label: 'En proceso', emoji: '🕐', cls: 'bg-amber-50 text-amber-700' },
+  en_pobox: { label: 'En McAllen', emoji: '📦', cls: 'bg-blue-50 text-blue-700' },
+  entregado: { label: 'Entregado', emoji: '✅', cls: 'bg-emerald-50 text-emerald-700' },
+  rechazado: { label: 'Rechazado', emoji: '❌', cls: 'bg-red-50 text-red-700' },
+};
+
 function HistoryPanel({
   history,
   onClear,
   onSelect,
+  statusMap,
 }: {
   history: AnalisisCompleto[];
   onClear: () => void;
   onSelect: (item: AnalisisCompleto) => void;
+  statusMap: Record<string, EstadoPedido>;
 }) {
   return (
     <div className="mt-12 border-t border-neutral-200 pt-8">
       <div className="mb-4 flex items-center justify-between">
         <h3 className="text-sm font-semibold text-neutral-700">
-          Recibos recientes ({history.length})
+          Pedidos recientes ({history.length})
         </h3>
         <button
           onClick={onClear}
@@ -617,19 +690,28 @@ function HistoryPanel({
         </button>
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        {history.map((item) => (
-          <button
-            key={item.id}
-            onClick={() => onSelect(item)}
-            className="text-left rounded-lg border border-neutral-200 bg-white p-3 transition hover:border-voxoy-red hover:shadow-sm"
-          >
-            <p className="text-xs text-neutral-500 truncate">{item.extraido.tienda}</p>
-            <p className="text-sm font-medium text-voxoy-black truncate">{item.extraido.producto}</p>
-            <p className="text-sm text-voxoy-red font-semibold mt-1">
-              {formatMXN(item.calculo.fee_mxn)}
-            </p>
-          </button>
-        ))}
+        {history.map((item) => {
+          const status: EstadoPedido = statusMap[item.id] ?? 'pendiente';
+          const pill = HISTORY_STATUS_PILL[status];
+          return (
+            <button
+              key={item.id}
+              onClick={() => onSelect(item)}
+              className="text-left rounded-xl border border-neutral-200 bg-white p-3.5 transition hover:border-voxoy-red hover:shadow-sm"
+            >
+              <div className="flex items-start justify-between gap-2 mb-2">
+                <p className="text-xs text-neutral-500 truncate leading-tight">{item.extraido.tienda}</p>
+                <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold ${pill.cls}`}>
+                  {pill.emoji} {pill.label}
+                </span>
+              </div>
+              <p className="text-sm font-semibold text-voxoy-black truncate leading-snug">{item.extraido.producto}</p>
+              <p className="text-sm text-voxoy-red font-bold mt-1.5">
+                {formatMXN(item.calculo.fee_mxn)}
+              </p>
+            </button>
+          );
+        })}
       </div>
     </div>
   );
