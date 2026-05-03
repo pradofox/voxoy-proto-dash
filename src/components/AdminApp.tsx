@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { AnalisisCompleto, EstadoPedido, NivelConfianza } from '../lib/types';
 import { colorDeNivel } from '../lib/types';
 import { formatMXN, formatUSD, getTier } from '../lib/tabulador';
@@ -174,6 +174,16 @@ export default function AdminApp() {
             <span className="hidden sm:inline">Recargar</span>
           </button>
           <button
+            onClick={() => exportCSV(history)}
+            className="flex items-center gap-1.5 rounded-full border border-neutral-300 px-3 py-2 text-sm font-medium text-neutral-700 transition hover:border-neutral-400"
+            title="Exportar CSV"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.8" stroke="currentColor" className="h-4 w-4">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3" />
+            </svg>
+            <span className="hidden sm:inline">CSV</span>
+          </button>
+          <button
             onClick={clearHistory}
             disabled={clearing}
             className="flex items-center gap-1.5 rounded-full border border-red-200 px-3 py-2 text-sm font-medium text-red-600 transition hover:bg-red-50 disabled:opacity-50"
@@ -214,6 +224,9 @@ export default function AdminApp() {
           <p className="text-xl font-extrabold text-white">{formatMXN(stats.comisiones)}</p>
         </div>
       )}
+
+      {/* Activity Chart */}
+      <ActivityChart history={history} />
 
       {/* Search */}
       <div className="mb-4 relative">
@@ -265,6 +278,123 @@ export default function AdminApp() {
           onStatusChange={handleStatusChange}
         />
       )}
+    </div>
+  );
+}
+
+// ── CSV Export ────────────────────────────────────────────────────────────
+
+function exportCSV(history: AnalisisCompleto[]) {
+  const cols = [
+    'Fecha', 'Tienda', 'Producto', '# Orden',
+    'Precio USD', 'Categoría', 'Tarifa %', 'Comisión MXN',
+    'Nivel', 'Score', 'Estado', 'Duplicado',
+  ];
+  const rows = history.map((i) => [
+    new Date(i.timestamp).toLocaleString('es-MX'),
+    i.extraido.tienda,
+    i.extraido.producto,
+    i.extraido.numero_orden ?? '',
+    i.extraido.precio_reportado_usd,
+    i.extraido.categoria_estimada,
+    `${(i.calculo.fee_porcentaje * 100).toFixed(0)}%`,
+    i.calculo.fee_mxn.toFixed(0),
+    i.nivel,
+    i.score_confianza,
+    i._status ?? 'pendiente',
+    i._duplicado ? 'SÍ' : 'NO',
+  ]);
+  const csv =
+    '﻿' + // BOM para Excel
+    [cols, ...rows]
+      .map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(','))
+      .join('\n');
+  const a = Object.assign(document.createElement('a'), {
+    href: URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' })),
+    download: `voxoy-recibos-${new Date().toISOString().slice(0, 10)}.csv`,
+  });
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+// ── Activity Chart ─────────────────────────────────────────────────────────
+
+function ActivityChart({ history }: { history: AnalisisCompleto[] }) {
+  const DAYS = 14;
+  const data = useMemo(() => {
+    const now = new Date();
+    return Array.from({ length: DAYS }, (_, idx) => {
+      const d = new Date(now);
+      d.setDate(d.getDate() - (DAYS - 1 - idx));
+      d.setHours(0, 0, 0, 0);
+      const next = new Date(d);
+      next.setDate(next.getDate() + 1);
+      const items = history.filter((h) => h.timestamp >= d.getTime() && h.timestamp < next.getTime());
+      const flagueados = items.filter((h) => h.nivel === 'baja' || h.nivel === 'sospechoso').length;
+      return {
+        label: idx === DAYS - 1
+          ? 'Hoy'
+          : d.toLocaleDateString('es-MX', { day: 'numeric', month: 'short' }),
+        total: items.length,
+        flagueados,
+        confiables: items.length - flagueados,
+        isToday: idx === DAYS - 1,
+      };
+    });
+  }, [history]);
+
+  const max = Math.max(...data.map((d) => d.total), 1);
+
+  return (
+    <div className="rounded-xl border border-neutral-200 bg-white p-4 mb-6">
+      <p className="text-xs font-semibold uppercase tracking-wider text-neutral-500 mb-4">
+        Actividad · últimas 2 semanas
+      </p>
+      <div className="flex items-end gap-1 h-20">
+        {data.map((d, i) => {
+          const barH = Math.max((d.total / max) * 72, d.total > 0 ? 6 : 0);
+          const flagH = d.total > 0 ? (d.flagueados / d.total) * barH : 0;
+          return (
+            <div key={i} className="flex-1 flex flex-col items-center justify-end gap-0.5">
+              {d.total > 0 && (
+                <span className="text-[9px] font-semibold text-neutral-400 leading-none">{d.total}</span>
+              )}
+              <div className="w-full rounded-t overflow-hidden" style={{ height: `${barH}px` }}>
+                {flagH > 0 && (
+                  <div className="w-full bg-voxoy-red" style={{ height: `${flagH}px` }} />
+                )}
+                {barH - flagH > 0 && (
+                  <div className="w-full bg-emerald-400" style={{ height: `${barH - flagH}px` }} />
+                )}
+                {d.total === 0 && (
+                  <div className="w-full h-0.5 bg-neutral-100 rounded" />
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      <div className="flex gap-1 mt-1.5">
+        {data.map((d, i) => (
+          <div key={i} className="flex-1 text-center overflow-hidden">
+            {(d.isToday || d.total > 0 || i === 0) && (
+              <span className={`text-[8px] leading-none ${d.isToday ? 'font-bold text-voxoy-red' : 'text-neutral-400'}`}>
+                {d.label}
+              </span>
+            )}
+          </div>
+        ))}
+      </div>
+      <div className="flex gap-4 mt-3 pt-3 border-t border-neutral-100">
+        <div className="flex items-center gap-1.5">
+          <div className="h-2 w-2 rounded-full bg-emerald-400" />
+          <span className="text-xs text-neutral-500">Confiables / verificar</span>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <div className="h-2 w-2 rounded-full bg-voxoy-red" />
+          <span className="text-xs text-neutral-500">Flagueados</span>
+        </div>
+      </div>
     </div>
   );
 }

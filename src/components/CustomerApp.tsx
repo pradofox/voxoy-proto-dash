@@ -109,6 +109,8 @@ export default function CustomerApp() {
       {history.length > 0 && state.status === 'idle' && (
         <HistoryPanel history={history} onClear={clearHistory} onSelect={loadFromHistory} />
       )}
+
+      {state.status === 'idle' && <OrderStatusLookup />}
     </div>
   );
 }
@@ -350,6 +352,105 @@ function ErrorView({ message, onReset }: { message: string; onReset: () => void 
       >
         Intentar otro recibo
       </button>
+    </div>
+  );
+}
+
+// ── Order Status Lookup ────────────────────────────────────────────────────
+
+type PedidoResult =
+  | { found: false }
+  | { found: true; tienda: string; producto: string; precio_usd: number; fee_mxn: number; status: 'pendiente' | 'entregado' | 'rechazado'; timestamp: number };
+
+const STATUS_INFO = {
+  pendiente: {
+    emoji: '🕐',
+    label: 'En proceso',
+    desc: 'Tu paquete está siendo procesado. Te avisaremos cuando esté listo para recoger.',
+    color: 'bg-amber-50 border-amber-200 text-amber-900',
+  },
+  entregado: {
+    emoji: '✅',
+    label: 'Listo para recoger',
+    desc: 'Tu paquete llegó al PO Box Voxoy. Pasa a recogerlo de lunes a sábado 9am - 6pm.',
+    color: 'bg-emerald-50 border-emerald-200 text-emerald-900',
+  },
+  rechazado: {
+    emoji: '❌',
+    label: 'Rechazado',
+    desc: 'Tu pedido no pudo ser procesado. Contacta a Voxoy para más información.',
+    color: 'bg-red-50 border-red-200 text-red-900',
+  },
+};
+
+function OrderStatusLookup() {
+  const [orden, setOrden] = useState('');
+  const [result, setResult] = useState<PedidoResult | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  async function consultar() {
+    const q = orden.trim();
+    if (!q) return;
+    setLoading(true);
+    setResult(null);
+    try {
+      const res = await fetch(`/api/pedido?orden=${encodeURIComponent(q)}`);
+      const data = await res.json();
+      setResult(data);
+    } catch {
+      setResult({ found: false });
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div className="mt-12 border-t border-neutral-200 pt-8">
+      <h3 className="text-sm font-semibold text-neutral-700 mb-1">¿Ya tienes un pedido con Voxoy?</h3>
+      <p className="text-xs text-neutral-500 mb-4">Consulta el estado de tu paquete con el número de orden de tu tienda.</p>
+      <div className="flex gap-2">
+        <input
+          type="text"
+          value={orden}
+          onChange={(e) => { setOrden(e.target.value); setResult(null); }}
+          onKeyDown={(e) => e.key === 'Enter' && consultar()}
+          placeholder="Ej. W123456789 · BBY01-806-46-..."
+          className="flex-1 rounded-xl border border-neutral-200 px-4 py-2.5 text-sm text-neutral-800 placeholder:text-neutral-400 focus:border-voxoy-red focus:outline-none focus:ring-1 focus:ring-voxoy-red"
+        />
+        <button
+          onClick={consultar}
+          disabled={loading || !orden.trim()}
+          className="rounded-xl bg-voxoy-red px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-voxoy-red-dark disabled:opacity-50"
+        >
+          {loading ? '...' : 'Consultar'}
+        </button>
+      </div>
+
+      {result !== null && (
+        <div className="mt-4">
+          {!result.found ? (
+            <div className="rounded-xl border border-neutral-200 bg-neutral-50 p-4 text-sm text-neutral-600">
+              No encontramos un pedido con ese número de orden. Verifica que sea el número exacto de tu confirmación de compra.
+            </div>
+          ) : (
+            <div className={`rounded-xl border p-4 ${STATUS_INFO[result.status].color}`}>
+              <div className="flex items-start gap-3">
+                <span className="text-2xl">{STATUS_INFO[result.status].emoji}</span>
+                <div>
+                  <p className="font-semibold">{STATUS_INFO[result.status].label}</p>
+                  <p className="text-xs mt-0.5 opacity-80">{result.tienda} · {result.producto}</p>
+                  <p className="text-sm mt-2">{STATUS_INFO[result.status].desc}</p>
+                  {result.status === 'entregado' && (
+                    <p className="text-sm font-semibold mt-2">
+                      Comisión a pagar: {formatMXN(result.fee_mxn)}
+                    </p>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
