@@ -5,6 +5,22 @@ import { formatMXN, formatUSD, getTier } from '../lib/tabulador';
 
 type Filter = 'todos' | 'flagueados' | 'confiables' | 'pendientes';
 
+function buildWhatsappLink(item: AnalisisCompleto): string {
+  const { extraido, calculo } = item;
+  const msg = [
+    `¡Hola! 📦 Tu paquete llegó al PO Box Voxoy.`,
+    ``,
+    `*Producto:* ${extraido.producto}`,
+    `*Tienda:* ${extraido.tienda}`,
+    ``,
+    `*Comisión a pagar al recoger:* ${formatMXN(calculo.fee_mxn)}`,
+    ``,
+    `Puedes pasar a recogerlo de lunes a sábado de 9am a 6pm.`,
+    `¡Te esperamos! 🙂`,
+  ].join('\n');
+  return `https://wa.me/?text=${encodeURIComponent(msg)}`;
+}
+
 // ── helpers ────────────────────────────────────────────────────────────────
 
 function calcFraudeDetectado(history: AnalisisCompleto[]): number {
@@ -31,6 +47,7 @@ export default function AdminApp() {
   const [selected, setSelected] = useState<AnalisisCompleto | null>(null);
   const [loading, setLoading] = useState(true);
   const [clearing, setClearing] = useState(false);
+  const [search, setSearch] = useState('');
 
   async function fetchHistory() {
     setLoading(true);
@@ -68,12 +85,24 @@ export default function AdminApp() {
     fetchHistory();
   }, []);
 
-  const filtered = history.filter((item) => {
+  const q = search.toLowerCase().trim();
+  const afterSearch = q
+    ? history.filter(
+        (i) =>
+          i.extraido.tienda.toLowerCase().includes(q) ||
+          i.extraido.producto.toLowerCase().includes(q) ||
+          (i.extraido.numero_orden ?? '').toLowerCase().includes(q),
+      )
+    : history;
+
+  const filtered = afterSearch.filter((item) => {
     if (filter === 'flagueados') return item.nivel === 'baja' || item.nivel === 'sospechoso';
     if (filter === 'confiables') return item.nivel === 'alta';
     if (filter === 'pendientes') return !item._status || item._status === 'pendiente';
     return true;
   });
+
+  const duplicados = history.filter((i) => i._duplicado).length;
 
   const stats = {
     total: history.length,
@@ -82,6 +111,7 @@ export default function AdminApp() {
     comisiones: history.reduce((s, i) => s + i.calculo.fee_mxn, 0),
     fraude_usd: calcFraudeDetectado(history),
     pendientes: history.filter((i) => !i._status || i._status === 'pendiente').length,
+    duplicados,
   };
 
   // ── Loading ──────────────────────────────────────────────────────────────
@@ -158,17 +188,22 @@ export default function AdminApp() {
       </div>
 
       {/* Stats grid */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mb-6">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-6">
         <StatCard label="Total" value={stats.total.toString()} />
         <StatCard label="Pendientes" value={stats.pendientes.toString()} accent="amber" />
         <StatCard label="Confiables" value={stats.confiables.toString()} accent="emerald" />
         <StatCard label="Flagueados" value={stats.flagueados.toString()} accent="red" />
         <StatCard
+          label="Duplicados"
+          value={stats.duplicados > 0 ? stats.duplicados.toString() : '—'}
+          accent={stats.duplicados > 0 ? 'red' : undefined}
+          sub={stats.duplicados > 0 ? 'mismo # de orden' : 'sin duplicados'}
+        />
+        <StatCard
           label="Fraude detectado"
           value={stats.fraude_usd > 0 ? formatUSD(stats.fraude_usd) : '—'}
           accent={stats.fraude_usd > 0 ? 'red' : undefined}
           sub={stats.fraude_usd > 0 ? 'subdeclarado vs mercado' : 'sin alteraciones'}
-          colSpan
         />
       </div>
 
@@ -179,6 +214,23 @@ export default function AdminApp() {
           <p className="text-xl font-extrabold text-white">{formatMXN(stats.comisiones)}</p>
         </div>
       )}
+
+      {/* Search */}
+      <div className="mb-4 relative">
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.8" stroke="currentColor" className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-neutral-400 pointer-events-none">
+          <path strokeLinecap="round" strokeLinejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z" />
+        </svg>
+        <input
+          type="text"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Buscar por tienda, producto o # de orden..."
+          className="w-full rounded-xl border border-neutral-200 bg-white pl-9 pr-4 py-2.5 text-sm text-neutral-800 placeholder:text-neutral-400 focus:border-voxoy-red focus:outline-none focus:ring-1 focus:ring-voxoy-red"
+        />
+        {search && (
+          <button onClick={() => setSearch('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-neutral-600 text-lg leading-none">×</button>
+        )}
+      </div>
 
       {/* Filters */}
       <div className="mb-4 flex flex-wrap gap-2">
@@ -301,6 +353,11 @@ function ReciboRow({ item, onClick }: { item: AnalisisCompleto; onClick: () => v
             <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${statusCfg.pill}`}>
               {statusCfg.emoji} {statusCfg.label}
             </span>
+            {item._duplicado && (
+              <span className="rounded-full bg-purple-100 px-2 py-0.5 text-xs font-bold text-purple-700">
+                ♻️ DUPLICADO
+              </span>
+            )}
           </div>
           <p className="text-xs text-neutral-500 truncate">{item.extraido.tienda}</p>
           <p className="font-semibold text-voxoy-black text-sm truncate">{item.extraido.producto}</p>
@@ -416,6 +473,31 @@ function DetailModal({
                 );
               })}
             </div>
+
+            {/* WhatsApp */}
+            <div className="mt-4 pt-4 border-t border-neutral-100">
+              <p className="text-xs text-neutral-400 mb-2">Notificar al cliente</p>
+              <a
+                href={buildWhatsappLink(item)}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-2 rounded-full bg-[#25D366] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#1ebe5d]"
+              >
+                <svg viewBox="0 0 24 24" fill="currentColor" className="h-4 w-4">
+                  <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413Z"/>
+                </svg>
+                Avisar que llegó su paquete
+              </a>
+            </div>
+
+            {item._duplicado && (
+              <div className="mt-3 rounded-lg bg-purple-50 border border-purple-200 px-4 py-3">
+                <p className="text-sm font-semibold text-purple-900">♻️ Recibo duplicado</p>
+                <p className="text-xs text-purple-700 mt-0.5">
+                  Este número de orden ya fue registrado anteriormente. No entregar hasta verificar.
+                </p>
+              </div>
+            )}
           </div>
 
           {/* ── Comisión ──────────────────────────────────────────── */}

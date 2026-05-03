@@ -46,6 +46,32 @@ export const POST: APIRoute = async ({ request }) => {
 
     const result = await analizarRecibo(base64, file.name, apiKey);
 
+    // Check for duplicate order number
+    try {
+      const db = (env as any).DB;
+      const ordenId = result.extraido?.numero_orden;
+      if (db && ordenId) {
+        const dup = await db
+          .prepare(
+            "SELECT id FROM analyses WHERE JSON_EXTRACT(data, '$.extraido.numero_orden') = ? AND id != ?",
+          )
+          .bind(ordenId, result.id)
+          .first();
+        if (dup) {
+          (result as any)._duplicado = true;
+          result.score_confianza = Math.min(result.score_confianza, 15);
+          result.nivel = 'sospechoso';
+          result.razon_corta = `Orden duplicada · ${result.razon_corta}`;
+          result.razon_larga =
+            `⚠️ ALERTA: El número de orden ${ordenId} ya fue registrado previamente en el sistema. ` +
+            `Posible intento de reutilizar el mismo recibo. ` +
+            result.razon_larga;
+        }
+      }
+    } catch (dupErr) {
+      console.warn('Duplicate check failed (non-fatal)', dupErr);
+    }
+
     // Persist to D1 for cross-browser admin visibility
     try {
       const db = (env as any).DB;

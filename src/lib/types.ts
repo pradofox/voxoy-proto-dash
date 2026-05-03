@@ -34,6 +34,7 @@ export interface AnalisisCompleto {
   modo: 'ai' | 'mock' | 'manual';
   error?: string;
   _status?: EstadoPedido;
+  _duplicado?: boolean;
 }
 
 export function nivelDeScore(score: number): NivelConfianza {
