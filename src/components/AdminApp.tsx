@@ -335,6 +335,12 @@ function DetailModal({
   const { extraido, verificacion, calculo } = item;
   const [updating, setUpdating] = useState(false);
 
+  // Lock body scroll while modal is open (fixes iOS bounce bleed)
+  useEffect(() => {
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = ''; };
+  }, []);
+
   async function setStatus(status: EstadoPedido) {
     setUpdating(true);
     try {
@@ -357,7 +363,7 @@ function DetailModal({
       onClick={onClose}
     >
       <div
-        className="max-h-[92vh] w-full sm:max-w-2xl overflow-y-auto rounded-t-2xl sm:rounded-2xl bg-white shadow-xl"
+        className="max-h-[92vh] w-full sm:max-w-2xl overflow-y-auto overscroll-contain rounded-t-2xl sm:rounded-2xl bg-white shadow-xl"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Modal header */}
